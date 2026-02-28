@@ -34,6 +34,8 @@
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
+#include <vanetza/common/byte_buffer.hpp> //include Vanetza library
+
 namespace veins {
 
 using veins::AnnotationManager;

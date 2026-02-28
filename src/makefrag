@@ -65,3 +65,7 @@ endif
 ifeq ($(WITH_OSG), yes)
   OMNETPP_LIBS += $(OSG_LIBS)
 endif
+
+# ===== Vanetza integration (Local Setup) =====
+# This path is absolute and specific to this development machine
+INCLUDE_PATH += -I/home/ceci/vanetza
