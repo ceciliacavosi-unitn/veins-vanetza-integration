@@ -34,7 +34,7 @@
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
-#include <vanetza/common/byte_buffer.hpp> //include Vanetza library
+#include "veins/modules/messages/CamMessage_m.h" //include CAM message
 
 namespace veins {
 
@@ -68,7 +68,8 @@ public:
 
     enum DemoApplMessageKinds {
         SEND_BEACON_EVT,
-        SEND_WSA_EVT
+        SEND_WSA_EVT,
+        SEND_CAM_EVT
     };
 
 protected:
@@ -89,6 +90,9 @@ protected:
 
     /** @brief this function is called upon receiving a DemoServiceAdvertisement */
     virtual void onWSA(DemoServiceAdvertisment* wsa){};
+
+    /** @brief this function is called upon receiving a CamMessage */
+    virtual void onCAM(CamMessage* cam){};
 
     /** @brief this function is called every time the vehicle receives a position update signal */
     virtual void handlePositionUpdate(cObject* obj);
@@ -175,13 +179,16 @@ protected:
     uint32_t generatedWSMs;
     uint32_t generatedWSAs;
     uint32_t generatedBSMs;
+    uint32_t generatedCAMs;
     uint32_t receivedWSMs;
     uint32_t receivedWSAs;
     uint32_t receivedBSMs;
+    uint32_t receivedCAMs;
 
     /* messages for periodic events such as beacon and WSA transmissions */
     cMessage* sendBeaconEvt;
     cMessage* sendWSAEvt;
+    cMessage* sendCamEvt;
 };
 
 } // namespace veins

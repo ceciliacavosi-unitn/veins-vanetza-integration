@@ -69,13 +69,16 @@ void DemoBaseApplLayer::initialize(int stage)
 
         sendBeaconEvt = new cMessage("beacon evt", SEND_BEACON_EVT);
         sendWSAEvt = new cMessage("wsa evt", SEND_WSA_EVT);
+        sendCamEvt = new cMessage("cam evt", SEND_CAM_EVT); //initialize CAM
 
         generatedBSMs = 0;
         generatedWSAs = 0;
         generatedWSMs = 0;
+        generatedCAMs = 0;
         receivedBSMs = 0;
         receivedWSAs = 0;
         receivedWSMs = 0;
+        receivedCAMs = 0;
     }
     else if (stage == 1) {
 
@@ -97,16 +100,19 @@ void DemoBaseApplLayer::initialize(int stage)
 
             if (mac->isChannelSwitchingActive() == true) {
                 if (beaconInterval.raw() % (mac->getSwitchingInterval().raw() * 2)) {
-                    EV_ERROR << "The beacon interval (" << beaconInterval << ") is smaller than or not a multiple of  one synchronization interval (" << 2 * mac->getSwitchingInterval() << "). This means that beacons are generated during SCH intervals" << std::endl;
-                }
-                firstBeacon = computeAsynchronousSendingTime(beaconInterval, ChannelType::control);
+                EV_ERROR << "The beacon interval (" << beaconInterval << ") is smaller than or not a multiple of  one synchronization interval (" << 2 * mac->getSwitchingInterval() << "). This means that beacons are generated durante SCH intervals" << std::endl;
             }
+            firstBeacon = computeAsynchronousSendingTime(beaconInterval, ChannelType::control);
+         }
 
-            if (sendBeacons) {
-                scheduleAt(firstBeacon, sendBeaconEvt);
-            }
-        }
-    }
+         if (sendBeacons) {
+             scheduleAt(firstBeacon, sendBeaconEvt);
+         }
+      }
+
+      // CAM indipendente dai beacon, parte sempre dopo 1 secondo
+      scheduleAt(simTime() + 1.0, sendCamEvt);
+   }
 }
 
 simtime_t DemoBaseApplLayer::computeAsynchronousSendingTime(simtime_t interval, ChannelType chan)
@@ -217,6 +223,10 @@ void DemoBaseApplLayer::handleLowerMsg(cMessage* msg)
         receivedWSAs++;
         onWSA(wsa);
     }
+    else if (CamMessage* cam = dynamic_cast<CamMessage*>(wsm)) {
+        receivedCAMs++;
+        onCAM(cam);
+    }
     else {
         receivedWSMs++;
         onWSM(wsm);
@@ -242,6 +252,14 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
         scheduleAt(simTime() + wsaInterval, sendWSAEvt);
         break;
     }
+    case SEND_CAM_EVT: {
+            CamMessage* cam = new CamMessage();
+            populateWSM(cam);
+            sendDown(cam);
+
+            scheduleAt(simTime() + 1.0, sendCamEvt);
+            break;
+    }
     default: {
         if (msg) EV_WARN << "APP: Error: Got Self Message of unknown kind! Name: " << msg->getName() << endl;
         break;
@@ -259,12 +277,16 @@ void DemoBaseApplLayer::finish()
 
     recordScalar("generatedWSAs", generatedWSAs);
     recordScalar("receivedWSAs", receivedWSAs);
+
+    recordScalar("generatedCAMs", generatedCAMs);
+    recordScalar("receivedCAMs", receivedCAMs);
 }
 
 DemoBaseApplLayer::~DemoBaseApplLayer()
 {
     cancelAndDelete(sendBeaconEvt);
     cancelAndDelete(sendWSAEvt);
+    cancelAndDelete(sendCamEvt);
     findHost()->unsubscribe(BaseMobility::mobilityStateChangedSignal, this);
 }
 
@@ -310,6 +332,10 @@ void DemoBaseApplLayer::checkAndTrackPacket(cMessage* msg)
     else if (dynamic_cast<DemoServiceAdvertisment*>(msg)) {
         EV_TRACE << "sending down a WSA" << std::endl;
         generatedWSAs++;
+    }
+    else if (dynamic_cast<CamMessage*>(msg)) {       // <--- Aggiungi questo
+        EV_TRACE << "sending down a CAM" << std::endl;
+        generatedCAMs++;
     }
     else if (dynamic_cast<BaseFrame1609_4*>(msg)) {
         EV_TRACE << "sending down a wsm" << std::endl;
