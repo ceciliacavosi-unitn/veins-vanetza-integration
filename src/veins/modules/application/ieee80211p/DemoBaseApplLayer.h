@@ -23,6 +23,7 @@
 #pragma once
 
 #include <map>
+#include <memory>
 
 #include "veins/base/modules/BaseApplLayer.h"
 #include "veins/modules/utility/Consts80211p.h"
@@ -33,8 +34,13 @@
 #include "veins/modules/mac/ieee80211p/DemoBaseApplLayerToMac1609_4Interface.h"
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
+#include "veins/modules/messages/CamMessage_m.h"
 
-#include "veins/modules/messages/CamMessage_m.h" //include CAM message
+// --- Vanetza includes ---
+#include "vanetza/asn1/cam.hpp"
+#include "vanetza/units/angle.hpp"
+#include "vanetza/units/velocity.hpp"
+#include "vanetza/clock.hpp"
 
 namespace veins {
 
@@ -43,6 +49,33 @@ using veins::AnnotationManagerAccess;
 using veins::TraCICommandInterface;
 using veins::TraCIMobility;
 using veins::TraCIMobilityAccess;
+
+// ============================================================
+//  VeinsVehicleDataProvider — bridge Veins <-> Vanetza
+// ============================================================
+
+/**
+ * @brief Adapter che espone i dati del veicolo Veins/TraCI
+ *        nell'interfaccia attesa da Vanetza per la generazione dei CAM.
+ */
+class VEINS_API VeinsVehicleDataProvider {
+public:
+    explicit VeinsVehicleDataProvider(TraCIMobility* mob);
+
+    vanetza::units::GeoAngle latitude()  const;
+    vanetza::units::GeoAngle longitude() const;
+    vanetza::units::Velocity speed()     const;
+    vanetza::units::Angle    heading()   const;
+    uint32_t                 station_id() const;
+    vanetza::Clock::time_point timestamp() const;
+
+private:
+    TraCIMobility* mMobility;
+};
+
+// ============================================================
+//  DemoBaseApplLayer
+// ============================================================
 
 /**
  * @brief
@@ -73,25 +106,25 @@ public:
     };
 
 protected:
-    /** @brief handle messages from below and calls the onWSM, onBSM, and onWSA functions accordingly */
+    /** @brief handle messages from below and calls the onWSM, onBSM, onWSA and onCAM functions accordingly */
     void handleLowerMsg(cMessage* msg) override;
 
     /** @brief handle self messages */
     void handleSelfMsg(cMessage* msg) override;
 
-    /** @brief sets all the necessary fields in the WSM, BSM, or WSA. */
+    /** @brief sets all the necessary fields in the WSM, BSM, WSA or CAM */
     virtual void populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId = LAddress::L2BROADCAST(), int serial = 0);
 
     /** @brief this function is called upon receiving a BaseFrame1609_4 */
     virtual void onWSM(BaseFrame1609_4* wsm){};
 
-    /** @brief this function is called upon receiving a DemoSafetyMessage, also referred to as a beacon  */
+    /** @brief this function is called upon receiving a DemoSafetyMessage, also referred to as a beacon */
     virtual void onBSM(DemoSafetyMessage* bsm){};
 
     /** @brief this function is called upon receiving a DemoServiceAdvertisement */
     virtual void onWSA(DemoServiceAdvertisment* wsa){};
 
-    /** @brief this function is called upon receiving a CamMessage */
+    /** @brief this function is called upon receiving a CamMessage (ETSI EN 302 637-2) */
     virtual void onCAM(CamMessage* cam){};
 
     /** @brief this function is called every time the vehicle receives a position update signal */
@@ -121,14 +154,14 @@ protected:
     /**
      * @brief overloaded for error handling and stats recording purposes
      *
-     * @param msg the message to be sent. Must be a WSM/BSM/WSA
+     * @param msg the message to be sent. Must be a WSM/BSM/WSA/CAM
      */
     virtual void sendDown(cMessage* msg);
 
     /**
      * @brief overloaded for error handling and stats recording purposes
      *
-     * @param msg the message to be sent. Must be a WSM/BSM/WSA
+     * @param msg the message to be sent. Must be a WSM/BSM/WSA/CAM
      * @param delay the delay for the message
      */
     virtual void sendDelayedDown(cMessage* msg, simtime_t delay);
@@ -141,7 +174,7 @@ protected:
     virtual void checkAndTrackPacket(cMessage* msg);
 
 protected:
-    /* pointers ill be set when used with TraCIMobility */
+    /* pointers will be set when used with TraCIMobility */
     TraCIMobility* mobility;
     TraCICommandInterface* traci;
     TraCICommandInterface::Vehicle* traciVehicle;
@@ -185,10 +218,13 @@ protected:
     uint32_t receivedBSMs;
     uint32_t receivedCAMs;
 
-    /* messages for periodic events such as beacon and WSA transmissions */
+    /* messages for periodic events such as beacon, WSA and CAM transmissions */
     cMessage* sendBeaconEvt;
     cMessage* sendWSAEvt;
     cMessage* sendCamEvt;
+
+    // --- Vanetza: bridge per la lettura dei dati del veicolo ---
+    std::unique_ptr<VeinsVehicleDataProvider> mVehicleDataProvider;
 };
 
 } // namespace veins
