@@ -1,25 +1,3 @@
-//
-// Copyright (C) 2011 David Eckhoff <eckhoff@cs.fau.de>
-//
-// Documentation for these modules is at http://veins.car2x.org/
-//
-// SPDX-License-Identifier: GPL-2.0-or-later
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 2 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-//
-
 #include "veins/modules/application/ieee80211p/DemoBaseApplLayer.h"
 
 using namespace veins;
@@ -29,48 +7,51 @@ using namespace veins;
 // ============================================================
 
 VeinsVehicleDataProvider::VeinsVehicleDataProvider(TraCIMobility* mob)
-    : mMobility(mob)
-{
+    : mMobility(mob) {}
+
+/* Latitude/Longitude in gradi (GeoAngle expects degrees) */
+vanetza::units::GeoAngle VeinsVehicleDataProvider::latitude() const {
+    if (!mMobility) return 0.0 * boost::units::degree::degree;
+    double lat_m = mMobility->getPositionAt(simTime()).y;
+    // Convert meters -> degrees using approximate scale (1 deg ~ 111000 m)
+    double deg = 45.0 + (lat_m / 111000.0);
+    return deg * boost::units::degree::degree;
 }
 
-vanetza::units::GeoAngle VeinsVehicleDataProvider::latitude() const
-{
-    // TraCI restituisce coordinate in metri (proiezione), convertiamo in gradi
-    return vanetza::units::GeoAngle {
-        mMobility->getCurrentPosition().y * boost::units::degree::degree
-    };
+vanetza::units::GeoAngle VeinsVehicleDataProvider::longitude() const {
+    if (!mMobility) return 0.0 * boost::units::degree::degree;
+    double lon_m = mMobility->getPositionAt(simTime()).x;
+    double deg = 9.0 + (lon_m / 111000.0);
+    return deg * boost::units::degree::degree;
 }
 
-vanetza::units::GeoAngle VeinsVehicleDataProvider::longitude() const
-{
-    return vanetza::units::GeoAngle {
-        mMobility->getCurrentPosition().x * boost::units::degree::degree
-    };
+/* Speed in m/s as vanetza::units::Velocity (SI) */
+vanetza::units::Velocity VeinsVehicleDataProvider::speed() const {
+    if (!mMobility) return 0.0 * boost::units::si::meter_per_second;
+    double spd = mMobility->getSpeed();
+    return spd * boost::units::si::meter_per_second;
 }
 
-vanetza::units::Velocity VeinsVehicleDataProvider::speed() const
-{
-    return vanetza::units::Velocity {
-        mMobility->getCurrentSpeed() * boost::units::si::meter_per_second
-    };
+/* Heading must return vanetza::units::Angle (radians) */
+vanetza::units::Angle VeinsVehicleDataProvider::heading() const {
+    if (!mMobility) return 0.0 * boost::units::si::radian;
+
+    // Use Veins Heading getter that returns radians
+    double rad = mMobility->getHeading().getRad();
+
+    // Normalize to [0, 2*pi)
+    const double two_pi = 2.0 * M_PI;
+    double normalized_rad = std::fmod(std::fmod(rad, two_pi) + two_pi, two_pi);
+
+    return normalized_rad * boost::units::si::radian;
 }
 
-vanetza::units::Angle VeinsVehicleDataProvider::heading() const
-{
-    return vanetza::units::Angle {
-        mMobility->getCurrentAngle() * boost::units::degree::degree
-    };
+uint32_t VeinsVehicleDataProvider::station_id() const {
+    if (!mMobility) return 0u;
+    return static_cast<uint32_t>(mMobility->getId());
 }
 
-uint32_t VeinsVehicleDataProvider::station_id() const
-{
-    // Usa l'ID esterno del veicolo TraCI come stationID ETSI
-    return static_cast<uint32_t>(std::hash<std::string>{}(mMobility->getExternalId()));
-}
-
-vanetza::Clock::time_point VeinsVehicleDataProvider::timestamp() const
-{
-    // Converti simTime in time_point Vanetza
+vanetza::Clock::time_point VeinsVehicleDataProvider::timestamp() const {
     using namespace std::chrono;
     auto ms = duration_cast<milliseconds>(duration<double>(simTime().dbl()));
     return vanetza::Clock::time_point(ms);
@@ -83,6 +64,9 @@ vanetza::Clock::time_point VeinsVehicleDataProvider::timestamp() const
 /**
  * Costruisce un CAM ETSI-compliant a partire dal VehicleDataProvider.
  * Popola: header, BasicContainer, HighFrequencyContainer.
+ *
+ * Nota: si assume che vdp rappresenti un provider valido
+ * (chiamare solo quando mVehicleDataProvider non è nullptr).
  */
 static vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp)
 {
@@ -94,21 +78,21 @@ static vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp)
     cam->header.stationID       = vdp.station_id();
 
     // --- GenerationDeltaTime (modulo 65536 ms) ---
-    using namespace std::chrono;
-    auto now_ms = duration_cast<milliseconds>(
-        vdp.timestamp().time_since_epoch()).count();
-    cam->cam.generationDeltaTime =
-        static_cast<GenerationDeltaTime_t>(now_ms % 65536);
+    uint32_t now_ms = static_cast<uint32_t>(std::lround(simTime().dbl() * 1000.0)) % 65536;
+    cam->cam.generationDeltaTime = static_cast<GenerationDeltaTime_t>(now_ms);
 
     // --- BasicContainer ---
-    auto& basic = cam->cam.camParameters.basicContainer;
+    auto &basic = cam->cam.camParameters.basicContainer;
     basic.stationType = StationType_passengerCar;
 
-    // Posizione in decimi di micro-grado (ETSI: 1e-7 gradi)
-    basic.referencePosition.latitude =
-        static_cast<Latitude_t>(vdp.latitude().value()  * 1e7);
-    basic.referencePosition.longitude =
-        static_cast<Longitude_t>(vdp.longitude().value() * 1e7);
+    // Posizione ETSI: 1e-7 gradi
+    // Assumiamo vdp.latitude() e longitude() ritornino quantita' in gradi (value() -> numeric degrees)
+    double lat_deg = vdp.latitude().value();   // numeric degrees
+    double lon_deg = vdp.longitude().value();
+
+    basic.referencePosition.latitude  = static_cast<Latitude_t>(std::lround(lat_deg * 1e7));
+    basic.referencePosition.longitude = static_cast<Longitude_t>(std::lround(lon_deg * 1e7));
+
     basic.referencePosition.positionConfidenceEllipse.semiMajorConfidence =
         SemiAxisLength_unavailable;
     basic.referencePosition.positionConfidenceEllipse.semiMinorConfidence =
@@ -121,35 +105,49 @@ static vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp)
         AltitudeConfidence_unavailable;
 
     // --- HighFrequencyContainer ---
-    auto& hfc = cam->cam.camParameters.highFrequencyContainer;
+    auto &hfc = cam->cam.camParameters.highFrequencyContainer;
     hfc.present = HighFrequencyContainer_PR_basicVehicleContainerHighFrequency;
-    auto& bvchf = hfc.choice.basicVehicleContainerHighFrequency;
+    auto &bvchf = hfc.choice.basicVehicleContainerHighFrequency;
 
-    // Velocità in cm/s (ETSI: 0..16383, 16383 = unavailable)
-    bvchf.speed.speedValue =
-        static_cast<SpeedValue_t>(vdp.speed().value() * 100.0);
+    // Speed: ETSI uses cm/s. Assume vdp.speed().value() returns m/s
+    double speed_m_s = vdp.speed().value();
+    double spd_cm_s = speed_m_s * 100.0;
+    if (!std::isfinite(spd_cm_s) || spd_cm_s < 0.0) {
+        bvchf.speed.speedValue = SpeedValue_unavailable;
+    } else if (spd_cm_s >= static_cast<double>(SpeedValue_unavailable)) {
+        bvchf.speed.speedValue = SpeedValue_unavailable;
+    } else {
+        bvchf.speed.speedValue = static_cast<SpeedValue_t>(std::lround(spd_cm_s));
+    }
     bvchf.speed.speedConfidence = SpeedConfidence_unavailable;
 
-    // Heading in decimi di grado (ETSI: 0..3601, 3601 = unavailable)
-    bvchf.heading.headingValue =
-        static_cast<HeadingValue_t>(vdp.heading().value() * 10.0);
+    // Heading: convert from radians -> degrees if needed
+    // Here convert vdp.heading() numeric value (radians) to degrees:
+    double heading_rad = vdp.heading().value(); // assume rad
+    double heading_deg = heading_rad * (180.0 / M_PI);
+    double heading_tenths = std::fmod(std::fmod(heading_deg, 360.0) + 360.0, 360.0) * 10.0; // decimi di grado
+
+    if (!std::isfinite(heading_tenths)) {
+        bvchf.heading.headingValue = HeadingValue_unavailable;
+    } else {
+        if (heading_tenths < 0.0) heading_tenths = 0.0;
+        if (heading_tenths > 3600.0) heading_tenths = 3600.0;
+        bvchf.heading.headingValue = static_cast<HeadingValue_t>(std::lround(heading_tenths));
+    }
     bvchf.heading.headingConfidence = HeadingConfidence_unavailable;
 
-    // Campi obbligatori con valori "unavailable"
-    bvchf.driveDirection              = DriveDirection_forward;
+    // altri campi obbligatori
+    bvchf.driveDirection = DriveDirection_forward;
     bvchf.vehicleLength.vehicleLengthValue = VehicleLengthValue_unavailable;
-    bvchf.vehicleLength.vehicleLengthConfidenceIndication =
-        VehicleLengthConfidenceIndication_unavailable;
-    bvchf.vehicleWidth                = VehicleWidth_unavailable;
-    bvchf.longitudinalAcceleration.longitudinalAccelerationValue =
-        LongitudinalAccelerationValue_unavailable;
-    bvchf.longitudinalAcceleration.longitudinalAccelerationConfidence =
-        AccelerationConfidence_unavailable;
-    bvchf.curvature.curvatureValue    = CurvatureValue_unavailable;
+    bvchf.vehicleLength.vehicleLengthConfidenceIndication = VehicleLengthConfidenceIndication_unavailable;
+    bvchf.vehicleWidth = VehicleWidth_unavailable;
+    bvchf.longitudinalAcceleration.longitudinalAccelerationValue = LongitudinalAccelerationValue_unavailable;
+    bvchf.longitudinalAcceleration.longitudinalAccelerationConfidence = AccelerationConfidence_unavailable;
+    bvchf.curvature.curvatureValue = CurvatureValue_unavailable;
     bvchf.curvature.curvatureConfidence = CurvatureConfidence_unavailable;
-    bvchf.curvatureCalculationMode    = CurvatureCalculationMode_unavailable;
-    bvchf.yawRate.yawRateValue        = YawRateValue_unavailable;
-    bvchf.yawRate.yawRateConfidence   = YawRateConfidence_unavailable;
+    bvchf.curvatureCalculationMode = CurvatureCalculationMode_unavailable;
+    bvchf.yawRate.yawRateValue = YawRateValue_unavailable;
+    bvchf.yawRate.yawRateConfidence = YawRateConfidence_unavailable;
 
     return cam;
 }
@@ -214,7 +212,7 @@ void DemoBaseApplLayer::initialize(int stage)
         receivedWSMs  = 0;
         receivedCAMs  = 0;
 
-        // --- Inizializza VehicleDataProvider Vanetza ---
+        // --- Inizializza VehicleDataProvider Vanetza (se mobility già disponibile) ---
         if (mobility) {
             mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
         }
@@ -253,8 +251,17 @@ void DemoBaseApplLayer::initialize(int stage)
             }
         }
 
-        // CAM ETSI: primo invio dopo 1 s (poi ogni 100 ms per rispettare ETSI EN 302 637-2)
-        scheduleAt(simTime() + 1.0, sendCamEvt);
+        // Se mobility non era disponibile in stage 0, proviamo a crearne il provider ora
+        if (!mVehicleDataProvider && mobility) {
+            mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
+        }
+
+        // CAM ETSI: primo invio dopo 1 s (poi ogni 100 ms) — scheduliamo solo se abbiamo un provider
+        if (mVehicleDataProvider) {
+            scheduleAt(simTime() + 1.0, sendCamEvt);
+        } else {
+            EV_INFO << "No VeinsVehicleDataProvider available for this node — CAM will not be scheduled\n";
+        }
     }
 }
 
@@ -310,16 +317,23 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
         wsa->setServiceDescription(currentServiceDescription.c_str());
     }
     else if (CamMessage* cam = dynamic_cast<CamMessage*>(wsm)) {
-        // Popola il wrapper OMNeT++ con il payload Vanetza
-        cam->setChannelNumber(static_cast<int>(Channel::cch));
-        cam->setPsid(-1);
-        cam->addBitLength(beaconLengthBits);
-        wsm->setUserPriority(beaconUserPriority);
-
-        // Costruisci il CAM ETSI tramite Vanetza e salvalo nel messaggio
+        // Proteggiamo la generazione del CAM: richiediamo che esista il provider
         if (mVehicleDataProvider) {
-            vanetza::asn1::Cam vanetzaCam = buildCam(*mVehicleDataProvider);
-            cam->setVanetzaCam(std::move(vanetzaCam)); // vedi nota (*)
+            auto vanetzaCam = buildCam(*mVehicleDataProvider);
+            vanetza::ByteBuffer buffer = vanetzaCam.encode();
+
+            // Salva il payload nel messaggio OMNeT++
+            cam->setVanetzaPayloadArraySize(buffer.size());
+            for (size_t i = 0; i < buffer.size(); ++i) {
+                cam->setVanetzaPayload(i, buffer[i]);
+            }
+
+            cam->setByteLength(buffer.size());
+        } else {
+            // Nessun provider: imposta payload vuoto e segnala
+            EV_WARN << "populateWSM: no VeinsVehicleDataProvider available — CAM payload vuoto\n";
+            cam->setVanetzaPayloadArraySize(0);
+            cam->setByteLength(0);
         }
     }
     else {
@@ -346,11 +360,46 @@ void DemoBaseApplLayer::receiveSignal(cComponent* source, simsignal_t signalID,
     }
 }
 
+void DemoBaseApplLayer::onCAM(CamMessage* camMsg)
+{
+    size_t n = camMsg->getVanetzaPayloadArraySize();
+    vanetza::ByteBuffer buffer(n);
+    for (size_t i = 0; i < n; ++i) {
+        buffer[i] = static_cast<uint8_t>(camMsg->getVanetzaPayload(i));
+    }
+
+    try {
+        vanetza::asn1::Cam cam;
+            cam.decode(buffer);
+
+       uint32_t id = cam->header.stationID;
+        double lat = static_cast<double>(cam->cam.camParameters.basicContainer.referencePosition.latitude) / 1e7;
+        double lon = static_cast<double>(cam->cam.camParameters.basicContainer.referencePosition.longitude) / 1e7;
+
+        EV_INFO << ">>> RICEVUTO CAM DA STATION ID: " << id << " | POS: " << lat << ", " << lon << " <<<" << endl;
+
+    } catch (const std::exception& e) {
+        EV_ERROR << "Errore decodifica Vanetza: " << e.what() << endl;
+    }
+}
+
 void DemoBaseApplLayer::handlePositionUpdate(cObject* obj)
 {
+    // 1. Chiamata standard per aggiornare posizione/velocità
     ChannelMobilityPtrType const mobility = check_and_cast<ChannelMobilityPtrType>(obj);
     curPosition = mobility->getPositionAt(simTime());
     curSpeed    = mobility->getCurrentSpeed();
+
+    // 2. CONTROLLO VANETZA: Se l'auto è appena apparsa, crea il provider e il timer
+    if (!mVehicleDataProvider && this->mobility) {
+        mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(this->mobility);
+
+        // Se il timer non è ancora stato schedulato, facciamolo ora!
+        if (!sendCamEvt->isScheduled()) {
+            scheduleAt(simTime() + 1.0, sendCamEvt);
+            EV_INFO << "Auto apparsa in SUMO: Provider creato e CAM schedulato per " << getFullPath() << endl;
+        }
+    }
 }
 
 void DemoBaseApplLayer::handleParkingUpdate(cObject* obj)
@@ -409,6 +458,14 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
 
     case SEND_CAM_EVT: {
         // Costruisci e invia il CAM ETSI tramite Vanetza
+        // Se non abbiamo ancora il provider (mobility non inizializzata), salta l'invio
+        if (!mVehicleDataProvider) {
+            EV_WARN << "SEND_CAM_EVT: VeinsVehicleDataProvider not available yet - skipping CAM and retrying\n";
+            // riproviamo dopo 100ms (non bloccante)
+            scheduleAt(simTime() + 0.1, sendCamEvt);
+            break;
+        }
+
         CamMessage* cam = new CamMessage();
         populateWSM(cam);
         sendDown(cam);

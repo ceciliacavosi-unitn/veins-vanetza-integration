@@ -67,5 +67,31 @@ ifeq ($(WITH_OSG), yes)
 endif
 
 # ===== Vanetza integration (Local Setup) =====
-# This path is absolute and specific to this development machine
 INCLUDE_PATH += -I/home/ceci/vanetza
+INCLUDE_PATH += -I/home/ceci/vanetza/vanetza/asn1/support
+INCLUDE_PATH += -I/home/ceci/vanetza/vanetza/asn1/its
+
+LIBS += -L/home/ceci/vanetza/build/lib/static
+
+LIBS += -Wl,--start-group
+LIBS += -lvanetza_facilities
+LIBS += -lvanetza_geonet
+LIBS += -lvanetza_net
+LIBS += -lvanetza_access
+LIBS += -lvanetza_btp
+LIBS += -lvanetza_dcc
+LIBS += -lvanetza_gnss
+LIBS += -lvanetza_security
+LIBS += -lvanetza_asn1_security
+LIBS += -lvanetza_asn1_security_r2
+LIBS += -lvanetza_asn1_its
+LIBS += -lvanetza_asn1_its_r2
+LIBS += -lvanetza_asn1_support
+LIBS += -lvanetza_asn1
+LIBS += -lvanetza_common
+LIBS += -Wl,--end-group
+
+LIBS += -lcryptopp
+LIBS += -lboost_system
+LIBS += -lboost_date_time
+LIBS += -lGeographicLib

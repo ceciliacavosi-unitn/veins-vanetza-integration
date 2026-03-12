@@ -1,29 +1,9 @@
-//
-// Copyright (C) 2016 David Eckhoff <eckhoff@cs.fau.de>
-//
-// Documentation for these modules is at http://veins.car2x.org/
-//
-// SPDX-License-Identifier: GPL-2.0-or-later
-//
-// This program is free software; you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation; either version 2 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-//
-
 #pragma once
 
 #include <map>
 #include <memory>
+#include <cmath>
+#include <chrono>
 
 #include "veins/base/modules/BaseApplLayer.h"
 #include "veins/modules/utility/Consts80211p.h"
@@ -40,7 +20,8 @@
 #include "vanetza/asn1/cam.hpp"
 #include "vanetza/units/angle.hpp"
 #include "vanetza/units/velocity.hpp"
-#include "vanetza/clock.hpp"
+#include "vanetza/common/clock.hpp"
+
 
 namespace veins {
 
@@ -57,6 +38,9 @@ using veins::TraCIMobilityAccess;
 /**
  * @brief Adapter che espone i dati del veicolo Veins/TraCI
  *        nell'interfaccia attesa da Vanetza per la generazione dei CAM.
+ *
+ * Nota: i metodi sono resilienti a mMobility == nullptr e
+ * ritornano valori sensati di default (0 / unavailable).
  */
 class VEINS_API VeinsVehicleDataProvider {
 public:
@@ -125,7 +109,7 @@ protected:
     virtual void onWSA(DemoServiceAdvertisment* wsa){};
 
     /** @brief this function is called upon receiving a CamMessage (ETSI EN 302 637-2) */
-    virtual void onCAM(CamMessage* cam){};
+    virtual void onCAM(CamMessage* cam);
 
     /** @brief this function is called every time the vehicle receives a position update signal */
     virtual void handlePositionUpdate(cObject* obj);
