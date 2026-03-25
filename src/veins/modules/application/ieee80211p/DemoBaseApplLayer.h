@@ -1,10 +1,17 @@
 #pragma once
 
+// Standard library
 #include <map>
 #include <memory>
 #include <cmath>
 #include <chrono>
+#include <vector>
+#include <cstdint>
+#include <sstream>
+#include <iomanip>
+#include <set>
 
+// Veins / OMNeT++ includes
 #include "veins/base/modules/BaseApplLayer.h"
 #include "veins/modules/utility/Consts80211p.h"
 #include "veins/modules/messages/BaseFrame1609_4_m.h"
@@ -14,14 +21,21 @@
 #include "veins/modules/mac/ieee80211p/DemoBaseApplLayerToMac1609_4Interface.h"
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
-#include "veins/modules/messages/CamMessage_m.h"
 
-// --- Vanetza includes ---
+// Application messages
+#include "veins/modules/messages/CamMessage_m.h"
+#include "veins/modules/messages/DenmMessage_m.h"
+
+// Vanetza (ASN.1) includes used for CAM/DENM construction
 #include "vanetza/asn1/cam.hpp"
+#include "vanetza/asn1/denm.hpp"
+#include "vanetza/asn1/asn1c_wrapper.hpp"
+#include "vanetza/common/clock.hpp"
 #include "vanetza/units/angle.hpp"
 #include "vanetza/units/velocity.hpp"
-#include "vanetza/common/clock.hpp"
-
+#include "vanetza/units/acceleration.hpp"
+#include "vanetza/asn1/its/CauseCodeType.h"
+#include "vanetza/asn1/its/AccidentSubCauseCode.h"
 
 namespace veins {
 
@@ -31,20 +45,14 @@ using veins::TraCICommandInterface;
 using veins::TraCIMobility;
 using veins::TraCIMobilityAccess;
 
-// ============================================================
-//  VeinsVehicleDataProvider — bridge Veins <-> Vanetza
-// ============================================================
-
-/**
- * @brief Adapter che espone i dati del veicolo Veins/TraCI
- *        nell'interfaccia attesa da Vanetza per la generazione dei CAM.
- *
- * Nota: i metodi sono resilienti a mMobility == nullptr e
- * ritornano valori sensati di default (0 / unavailable).
+/*
+ * ============================================================
+ * VeinsVehicleDataProvider
+ * ============================================================
  */
 class VEINS_API VeinsVehicleDataProvider {
 public:
-    explicit VeinsVehicleDataProvider(TraCIMobility* mob);
+    explicit VeinsVehicleDataProvider(BaseMobility* mob);
 
     vanetza::units::GeoAngle latitude()  const;
     vanetza::units::GeoAngle longitude() const;
@@ -53,31 +61,24 @@ public:
     uint32_t                 station_id() const;
     vanetza::Clock::time_point timestamp() const;
 
+    vanetza::units::Acceleration acceleration() const;
+
+    int get_event_cause() const;
+    int get_event_subcause() const;
+
 private:
-    TraCIMobility* mMobility;
+    BaseMobility* mMobility;
 };
 
-// ============================================================
-//  DemoBaseApplLayer
-// ============================================================
-
-/**
- * @brief
- * Demo application layer base class.
- *
- * @author David Eckhoff
- *
- * @ingroup applLayer
- *
- * @see DemoBaseApplLayer
- * @see Mac1609_4
- * @see PhyLayer80211p
- * @see Decider80211p
+/*
+ * ============================================================
+ * DemoBaseApplLayer
+ * ============================================================
  */
 class VEINS_API DemoBaseApplLayer : public BaseApplLayer {
-
 public:
     ~DemoBaseApplLayer() override;
+
     void initialize(int stage) override;
     void finish() override;
 
@@ -86,129 +87,112 @@ public:
     enum DemoApplMessageKinds {
         SEND_BEACON_EVT,
         SEND_WSA_EVT,
-        SEND_CAM_EVT
+        SEND_CAM_EVT,
+        SEND_DENM_EVT
     };
 
 protected:
-    /** @brief handle messages from below and calls the onWSM, onBSM, onWSA and onCAM functions accordingly */
-    void handleLowerMsg(cMessage* msg) override;
+    // --------------------------------------------------------
+    // Member Variables
+    // --------------------------------------------------------
 
-    /** @brief handle self messages */
-    void handleSelfMsg(cMessage* msg) override;
+    /* Mobility & helper objects */
+    BaseMobility* mobility = nullptr;
+    TraCICommandInterface* traci = nullptr;
+    TraCICommandInterface::Vehicle* traciVehicle = nullptr;
+    AnnotationManager* annotations = nullptr;
+    DemoBaseApplLayerToMac1609_4Interface* mac = nullptr;
 
-    /** @brief sets all the necessary fields in the WSM, BSM, WSA or CAM */
-    virtual void populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId = LAddress::L2BROADCAST(), int serial = 0);
+    /* Bridge to Vanetza-style vehicle data */
+    std::unique_ptr<VeinsVehicleDataProvider> mVehicleDataProvider;
 
-    /** @brief this function is called upon receiving a BaseFrame1609_4 */
-    virtual void onWSM(BaseFrame1609_4* wsm){};
+    /* Parking state */
+    bool isParked = false;
 
-    /** @brief this function is called upon receiving a DemoSafetyMessage, also referred to as a beacon */
-    virtual void onBSM(DemoSafetyMessage* bsm){};
+    /* DENM state tracking */
+    std::set<int> activeDenmEvents;
 
-    /** @brief this function is called upon receiving a DemoServiceAdvertisement */
-    virtual void onWSA(DemoServiceAdvertisment* wsa){};
+    /* BSM settings */
+    uint32_t beaconLengthBits = 0;
+    uint32_t beaconUserPriority = 0;
+    simtime_t beaconInterval = 0;
+    bool sendBeacons = false;
 
-    /** @brief this function is called upon receiving a CamMessage (ETSI EN 302 637-2) */
-    virtual void onCAM(CamMessage* cam);
+    /* WSM settings */
+    uint32_t dataLengthBits = 0;
+    uint32_t dataUserPriority = 0;
+    bool dataOnSch = false;
 
-    /** @brief this function is called every time the vehicle receives a position update signal */
-    virtual void handlePositionUpdate(cObject* obj);
-
-    /** @brief this function is called every time the vehicle parks or starts moving again */
-    virtual void handleParkingUpdate(cObject* obj);
-
-    /** @brief This will start the periodic advertising of the new service on the CCH
-     *
-     *  @param channel the channel on which the service is provided
-     *  @param serviceId a service ID to be used with the service
-     *  @param serviceDescription a literal description of the service
-     */
-    virtual void startService(Channel channel, int serviceId, std::string serviceDescription);
-
-    /** @brief stopping the service and advertising for it */
-    virtual void stopService();
-
-    /** @brief compute a point in time that is guaranteed to be in the correct channel interval plus a random offset
-     *
-     * @param interval the interval length of the periodic message
-     * @param chantype the type of channel, either type_CCH or type_SCH
-     */
-    virtual simtime_t computeAsynchronousSendingTime(simtime_t interval, ChannelType chantype);
-
-    /**
-     * @brief overloaded for error handling and stats recording purposes
-     *
-     * @param msg the message to be sent. Must be a WSM/BSM/WSA/CAM
-     */
-    virtual void sendDown(cMessage* msg);
-
-    /**
-     * @brief overloaded for error handling and stats recording purposes
-     *
-     * @param msg the message to be sent. Must be a WSM/BSM/WSA/CAM
-     * @param delay the delay for the message
-     */
-    virtual void sendDelayedDown(cMessage* msg, simtime_t delay);
-
-    /**
-     * @brief helper function for error handling and stats recording purposes
-     *
-     * @param msg the message to be checked and tracked
-     */
-    virtual void checkAndTrackPacket(cMessage* msg);
-
-protected:
-    /* pointers will be set when used with TraCIMobility */
-    TraCIMobility* mobility;
-    TraCICommandInterface* traci;
-    TraCICommandInterface::Vehicle* traciVehicle;
-
-    AnnotationManager* annotations;
-    DemoBaseApplLayerToMac1609_4Interface* mac;
-
-    /* support for parking currently only works with TraCI */
-    bool isParked;
-
-    /* BSM (beacon) settings */
-    uint32_t beaconLengthBits;
-    uint32_t beaconUserPriority;
-    simtime_t beaconInterval;
-    bool sendBeacons;
-
-    /* WSM (data) settings */
-    uint32_t dataLengthBits;
-    uint32_t dataUserPriority;
-    bool dataOnSch;
+    /* DENM settings */
+    uint32_t denmLengthBits = 0;
+    uint32_t denmUserPriority = 0;
+    uint16_t denmSequenceNumber;
 
     /* WSA settings */
-    int currentOfferedServiceId;
+    int currentOfferedServiceId = 0;
     std::string currentServiceDescription;
     Channel currentServiceChannel;
-    simtime_t wsaInterval;
+    simtime_t wsaInterval = 0;
 
-    /* state of the vehicle */
+    /* Runtime state */
     Coord curPosition;
     Coord curSpeed;
     LAddress::L2Type myId = 0;
-    int mySCH;
+    int mySCH = 0;
 
-    /* stats */
-    uint32_t generatedWSMs;
-    uint32_t generatedWSAs;
-    uint32_t generatedBSMs;
-    uint32_t generatedCAMs;
-    uint32_t receivedWSMs;
-    uint32_t receivedWSAs;
-    uint32_t receivedBSMs;
-    uint32_t receivedCAMs;
+    /* Statistics counters */
+    uint32_t generatedWSMs = 0;
+    uint32_t generatedWSAs = 0;
+    uint32_t generatedBSMs = 0;
+    uint32_t generatedCAMs = 0;
+    uint32_t generatedDENMs = 0;
+    uint32_t receivedWSMs = 0;
+    uint32_t receivedWSAs = 0;
+    uint32_t receivedBSMs = 0;
+    uint32_t receivedCAMs = 0;
+    uint32_t receivedDENMs = 0;
 
-    /* messages for periodic events such as beacon, WSA and CAM transmissions */
-    cMessage* sendBeaconEvt;
-    cMessage* sendWSAEvt;
-    cMessage* sendCamEvt;
+    /* Self-message timers */
+    cMessage* sendBeaconEvt = nullptr;
+    cMessage* sendWSAEvt = nullptr;
+    cMessage* sendCamEvt = nullptr;
+    cMessage* sendDenmEvt = nullptr;
 
-    // --- Vanetza: bridge per la lettura dei dati del veicolo ---
-    std::unique_ptr<VeinsVehicleDataProvider> mVehicleDataProvider;
+    /* DENM rate limiting */
+    simtime_t denmMinInterval = 1.0;
+    simtime_t lastDenmTime = SIMTIME_ZERO;
+    int denmDefaultCause = 0;
+    int denmDefaultSubcause = 0;
+
+    // --------------------------------------------------------
+    // Protected Methods
+    // --------------------------------------------------------
+
+    void handleLowerMsg(cMessage* msg) override;
+    void handleSelfMsg(cMessage* msg) override;
+
+    virtual void populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId = LAddress::L2BROADCAST(), int serial = 0);
+
+    virtual void onWSM(BaseFrame1609_4* wsm) {}
+    virtual void onBSM(DemoSafetyMessage* bsm) {}
+    virtual void onWSA(DemoServiceAdvertisment* wsa) {}
+    virtual void onCAM(CamMessage* cam);
+    virtual void onDENM(DenmMessage* denm);
+
+    virtual void triggerDenm(CauseCodeType_t eventCause, int cause = -1, int subcause = -1, const Coord* eventPos = nullptr, bool sendImmediate = true);
+
+    virtual void handlePositionUpdate(cObject* obj);
+    virtual void handleParkingUpdate(cObject* obj);
+
+    virtual void startService(Channel channel, int serviceId, std::string serviceDescription);
+    virtual void stopService();
+
+    virtual simtime_t computeAsynchronousSendingTime(simtime_t interval, ChannelType chantype);
+
+    virtual void sendDown(cMessage* msg);
+    virtual void sendDelayedDown(cMessage* msg, simtime_t delay);
+    virtual void sendDenmNow(CauseCodeType_t eventCause, int cause, int subcause, const Coord& eventPos);
+    virtual void checkAndTrackPacket(cMessage* msg);
 };
 
 } // namespace veins
