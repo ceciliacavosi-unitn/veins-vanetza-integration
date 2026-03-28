@@ -52,6 +52,9 @@ simple DemoBaseApplLayer like IBaseApplLayer
         int denmUserPriority = default(7);
         int denmDefaultCause = default(-1);
         int denmDefaultSubcause = default(0);
+        double denmStartTime @unit(s) = default(0s);
+        double denmStopTime  @unit(s) = default(200s);
+        double denmInterval  @unit(s) = default(1s);
 
         bool avoidBeaconSynchronization = default(true);
 
