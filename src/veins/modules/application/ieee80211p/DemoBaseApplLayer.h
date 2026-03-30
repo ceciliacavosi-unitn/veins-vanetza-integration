@@ -173,7 +173,7 @@ protected:
     //  Vehicle state
     // --------------------------------------------------------
 
-    bool isParked = false; ///< True when the vehicle is in parking state (TraCI)
+    bool isParked = false; // = true when the vehicle is in parking state (TraCI) and it can be used for other logic
 
     // --------------------------------------------------------
     //  DENM event tracking
@@ -364,3 +364,23 @@ protected:
 };
 
 } // namespace veins
+
+
+
+// ============================================================
+//  Future Implementations & Improvements
+// ============================================================
+// 1. Parking State Integration:
+//    - Use the 'isParked' flag to dynamically adjust CAM transmission.
+//    - For example, reduce CAM frequency or stop sending CAMs when the vehicle is parked.
+//    - On the RX side, ignore or specifically handle CAMs from parked vehicles.
+//
+// 2. Automated Event Classification via Vanetza:
+//    - Replace manual causeCode/subCauseCode checks with Vanetza's built-in ASN.1 definitions.
+//    - Automate event categorization by mapping simulation signals directly to Vanetza's
+//      standardized ITS event types, reducing hardcoded logic in the application layer.
+//
+// 3. Detailed SubCauseCode Logic:
+//    - Expand the 'subCauseCode' usage beyond passive logging.
+//    - Implement specific application-level reactions based on the sub-cause (e.g., different
+//      braking intensities or rerouting strategies for different accident types).

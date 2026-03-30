@@ -207,6 +207,7 @@ static vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp)
 
 // Encodes a uint64_t millisecond timestamp into the variable-length
 // ASN.1 TimestampIts_t BIT STRING (big-endian byte array).
+// Only buildDENM uses it because a CAM message is periodic so it doesn't need the timestamp
 static void setTimestamp(TimestampIts_t& ts, uint64_t ms)
 {
     if (ts.buf) free(ts.buf);
@@ -441,7 +442,9 @@ DemoBaseApplLayer::~DemoBaseApplLayer()
 // ============================================================
 
 // ------------------------------------------------------------
-//  TX — Self-message dispatcher
+//  TX — Self-message dispatcher automatically called by OMNeT++
+//  framework when a self-message arrives to the module that is
+//  treated as an alarm for the module to send anoter message
 //
 //  Central entry point for all periodic and one-shot TX events.
 //
@@ -660,21 +663,25 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
 //   mobilityStateChangedSignal → handlePositionUpdate()
 //   parkingStateChangedSignal  → triggerDenm() + handleParkingUpdate()
 //   collisionSignal            → triggerDenm()
+//   automatically called by the framework OMNeT++
 void DemoBaseApplLayer::receiveSignal(cComponent* source, simsignal_t signalID,
                                       cObject* obj, cObject* details)
 {
     Enter_Method_Silent();
 
     if (signalID == BaseMobility::mobilityStateChangedSignal) {
+        // check if there is any event in order to decide if we have to send a DENM or not
         handlePositionUpdate(obj);
     }
     else if (signalID == TraCIMobility::parkingStateChangedSignal) {
+        // we are sure that a DENM need to be sent and we update also the internal state of the module
         int cause    = par("denmDefaultCause");
         int subcause = par("denmDefaultSubcause");
         triggerDenm(static_cast<CauseCodeType_t>(cause), cause, subcause, nullptr, true);
         handleParkingUpdate(obj);
     }
     else if (signalID == TraCIMobility::collisionSignal) {
+        // we are sure that a DENM need to be sent
         int cause    = par("denmDefaultCause");
         int subcause = par("denmDefaultSubcause");
         triggerDenm(static_cast<CauseCodeType_t>(cause), cause, subcause, nullptr, true);
