@@ -23,7 +23,6 @@
 #include "veins/modules/messages/DemoSafetyMessage_m.h"
 #include "veins/base/connectionManager/ChannelAccess.h"
 #include "veins/modules/mac/ieee80211p/DemoBaseApplLayerToMac1609_4Interface.h"
-#include "veins/modules/mobility/traci/TraCIMobility.h"
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
 // ============================================================
@@ -47,48 +46,17 @@
 #include "vanetza/asn1/its/CauseCodeType.h"
 #include "vanetza/asn1/its/AccidentSubCauseCode.h"
 
+// ============================================================
+//  VeinsVehicleDataProvider
+// ============================================================
+#include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
+
 namespace veins {
 
 using veins::AnnotationManager;
 using veins::AnnotationManagerAccess;
 using veins::TraCICommandInterface;
-using veins::TraCIMobility;
 using veins::TraCIMobilityAccess;
-
-// ============================================================
-//  VeinsVehicleDataProvider
-//
-//  Bridge between the Veins mobility module (BaseMobility /
-//  TraCIMobility) and the Vanetza-style vehicle data interface.
-//  Used by buildCam() and buildDenm() to read position, speed,
-//  heading and station ID when populating message structures.
-// ============================================================
-class VEINS_API VeinsVehicleDataProvider {
-public:
-    explicit VeinsVehicleDataProvider(BaseMobility* mob);
-
-    // Geographic position (converted from SUMO Cartesian metres)
-    vanetza::units::GeoAngle latitude()  const;
-    vanetza::units::GeoAngle longitude() const;
-
-    // Kinematic data read from TraCIMobility (or fallback BaseMobility)
-    vanetza::units::Velocity     speed()       const;
-    vanetza::units::Angle        heading()     const;
-    vanetza::units::Acceleration acceleration() const;
-
-    // ITS station identifier (mapped from OMNeT++ module ID)
-    uint32_t station_id() const;
-
-    // Simulation timestamp converted to vanetza::Clock::time_point
-    vanetza::Clock::time_point timestamp() const;
-
-    // Optional: event cause/subcause for DENM generation
-    int get_event_cause()    const;
-    int get_event_subcause() const;
-
-private:
-    BaseMobility* mMobility; ///< Pointer to the underlying mobility module
-};
 
 // ============================================================
 //  DemoBaseApplLayer
@@ -364,23 +332,3 @@ protected:
 };
 
 } // namespace veins
-
-
-
-// ============================================================
-//  Future Implementations & Improvements
-// ============================================================
-// 1. Parking State Integration:
-//    - Use the 'isParked' flag to dynamically adjust CAM transmission.
-//    - For example, reduce CAM frequency or stop sending CAMs when the vehicle is parked.
-//    - On the RX side, ignore or specifically handle CAMs from parked vehicles.
-//
-// 2. Automated Event Classification via Vanetza:
-//    - Replace manual causeCode/subCauseCode checks with Vanetza's built-in ASN.1 definitions.
-//    - Automate event categorization by mapping simulation signals directly to Vanetza's
-//      standardized ITS event types, reducing hardcoded logic in the application layer.
-//
-// 3. Detailed SubCauseCode Logic:
-//    - Expand the 'subCauseCode' usage beyond passive logging.
-//    - Implement specific application-level reactions based on the sub-cause (e.g., different
-//      braking intensities or rerouting strategies for different accident types).
