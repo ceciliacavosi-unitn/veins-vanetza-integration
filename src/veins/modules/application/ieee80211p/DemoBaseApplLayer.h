@@ -51,6 +51,11 @@
 // ============================================================
 #include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
 
+// ============================================================
+//  VanetzaAdapter
+// ============================================================
+#include "veins/modules/application/ieee80211p/VanetzaAdapter.h"
+
 namespace veins {
 
 using veins::AnnotationManager;
@@ -122,6 +127,7 @@ public:
         SEND_DENM_EVT    ///< DENM transmission (periodic for RSU, one-shot for vehicles)
     };
 
+
 protected:
     // --------------------------------------------------------
     //  Mobility & infrastructure
@@ -136,6 +142,9 @@ protected:
     /// Provides Vanetza-compatible vehicle data (position, speed, heading, stationID).
     /// Created in initialize() and used by buildCam() / buildDenm() inside populateWSM().
     std::unique_ptr<VeinsVehicleDataProvider> mVehicleDataProvider;
+
+
+    std::unique_ptr<VanetzaAdapter> mAdapter;
 
     // --------------------------------------------------------
     //  Vehicle state
@@ -317,10 +326,10 @@ protected:
     virtual void onWSA(DemoServiceAdvertisment* wsa) {}
 
     /// CAM RX: decodes vanetzaPayload via cam.decode(buffer), extracts stationID/position/speed.
-    virtual void onCAM(CamMessage* cam);
+    //virtual void onCAM(CamMessage* cam);
 
     /// DENM RX: decodes vanetzaPayload via denm.decode(buffer), extracts causeCode/subCauseCode.
-    virtual void onDENM(DenmMessage* denm);
+    //virtual void onDENM(DenmMessage* denm);
 
     // ========================================================
     //  Utility
