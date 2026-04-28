@@ -115,9 +115,10 @@ void DemoBaseApplLayer::initialize(int stage)
         if (!mVehicleDataProvider && mobility)
             mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
 
-        // CAM TX: schedule first event only for vehicle nodes (TraCIMobility)
+        // CAM TX: schedule first check at T_CheckCamGen = 100 ms (ETSI §6.1.3)
         if (mVehicleDataProvider && mobility && dynamic_cast<veins::TraCIMobility*>(mobility))
-            scheduleAt(simTime() + 1, sendCamEvt);
+            scheduleAt(simTime() + 0.1, sendCamEvt);
+
 
         // DENM TX (RSU): schedule first event at denmStartTime for non-vehicle nodes
         int cause = par("denmDefaultCause");
@@ -206,25 +207,33 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
         break;
     }
 
-    // --- CAM TX (vehicles only) ---
+    /// --- CAM TX (vehicles only) — ETSI EN 302 637-2 §6.1.3 ---
     case SEND_CAM_EVT: {
-        // Guard: data provider must be ready (lazily created in handlePositionUpdate)
         if (!mVehicleDataProvider || !mobility) {
-            EV_WARN << "CAM [TX]: VeinsVehicleDataProvider not ready — retrying in 1s"
+            EV_WARN << "CAM [TX]: VeinsVehicleDataProvider not ready — retrying in 100ms"
                     << " name=" << getParentModule()->getFullName() << "\n";
-            scheduleAt(simTime() + 1, sendCamEvt);
+            scheduleAt(simTime() + 0.1, sendCamEvt); // retry after T_CheckCamGen
             break;
         }
-        CamMessage* cam = new CamMessage();
-        populateWSM(cam); // → buildCam() → vanetza encode → vanetzaPayload
-        EV_INFO << "CAM [TX]: stationID=" << mVehicleDataProvider->station_id()
-                << " pos=(" << mVehicleDataProvider->latitude().value()
-                << ", "     << mVehicleDataProvider->longitude().value() << ")"
-                << " speed=" << mVehicleDataProvider->speed().value() << " m/s"
-                << " name=" << getParentModule()->getFullName()
-                << " t=" << simTime() << "\n";
-        sendDown(cam);
-        scheduleAt(simTime() + 1, sendCamEvt); // periodic 1 Hz
+
+        // Evaluate ETSI §6.1.3 CAM generation conditions via VanetzaAdapter
+        if (mAdapter->checkCamGeneration(*mVehicleDataProvider)) {
+            CamMessage* cam = new CamMessage();
+            populateWSM(cam); // → buildCam() → vanetza encode → vanetzaPayload
+            EV_INFO << "CAM [TX]: stationID=" << mVehicleDataProvider->station_id()
+                    << " pos=(" << mVehicleDataProvider->latitude().value()
+                    << ", "     << mVehicleDataProvider->longitude().value() << ")"
+                    << " speed=" << mVehicleDataProvider->speed().value() << " m/s"
+                    << " name=" << getParentModule()->getFullName()
+                    << " t=" << simTime() << "\n";
+            sendDown(cam);
+
+            // Notify adapter that a CAM was sent — resets delta reference state
+            mAdapter->notifyCamSent(*mVehicleDataProvider);
+        }
+
+        // Always reschedule at T_CheckCamGen = 100 ms (ETSI §6.1.3)
+        scheduleAt(simTime() + 0.1, sendCamEvt);
         break;
     }
 

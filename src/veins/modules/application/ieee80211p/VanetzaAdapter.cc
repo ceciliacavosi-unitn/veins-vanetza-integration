@@ -5,6 +5,107 @@ using namespace omnetpp;
 
 namespace veins {
 
+VanetzaAdapter::VanetzaAdapter()
+    : mDccEntity(std::make_unique<VeinsDccEntity>())
+{
+}
+
+
+// ============================================================
+// DCC entity access
+// ============================================================
+
+vanetza::dcc::Entity& VanetzaAdapter::getDccEntity()
+{
+    return *mDccEntity;
+}
+
+
+// ============================================================
+// CAM generation check — ETSI EN 302 637-2 §6.1.3
+// ============================================================
+
+/**
+ * Evaluates ETSI CAM generation conditions every T_CheckCamGen (≤ 100 ms).
+ *
+ * On the very first call (mLastCamValid == false), returns true immediately
+ * so the first CAM is always sent at startup.
+ *
+ * Computes deltas against the last-sent CAM reference state and delegates
+ * the ETSI §6.1.3 logic to VeinsDccEntity::checkCamGeneration().
+ */
+bool VanetzaAdapter::checkCamGeneration(const VeinsVehicleDataProvider& vdp)
+{
+    // Always send the very first CAM
+    if (!mLastCamValid) return true;
+
+    // --- Build current ASN.1 position for distance() ---
+    ReferencePosition_t posNow{};
+    posNow.latitude  = static_cast<Latitude_t>(std::lround(vdp.latitude().value()  * 1e7));
+    posNow.longitude = static_cast<Longitude_t>(std::lround(vdp.longitude().value() * 1e7));
+    posNow.altitude.altitudeValue      = AltitudeValue_unavailable;
+    posNow.altitude.altitudeConfidence = AltitudeConfidence_unavailable;
+
+    // --- |Δposition| via vanetza::facilities::distance() ---
+    vanetza::units::Length deltaPos =
+        vanetza::facilities::distance(posNow, mLastCamPos);
+    double deltaPos_m = deltaPos / vanetza::units::si::meter;
+
+    // --- |Δheading| via vanetza::facilities::similar_heading() ---
+    // similar_heading() returns true if the two headings are within the limit
+    // → we want to trigger if they are NOT similar (i.e. differ by > 4°)
+    double headingNow_tenths = std::fmod(
+        std::fmod(vdp.heading().value() * (180.0 / M_PI), 360.0) + 360.0, 360.0) * 10.0;
+    HeadingValue_t headingNow = static_cast<HeadingValue_t>(std::lround(headingNow_tenths));
+
+    Heading_t hNow{};   hNow.headingValue = headingNow;
+    Heading_t hLast{};  hLast.headingValue = mLastCamHeading;
+
+    constexpr double HEADING_THRESHOLD_DEG = 4.0;
+    bool headingChanged = !vanetza::facilities::similar_heading(
+        hNow, hLast,
+        HEADING_THRESHOLD_DEG * vanetza::units::degree);
+
+    // --- |Δspeed| (no Vanetza helper — simple scalar delta) ---
+    double deltaSpeed_ms = std::abs(vdp.speed().value() - mLastCamSpeed_ms);
+
+    // --- Elapsed time since last CAM ---
+    auto now = vanetza::Clock::time_point(
+        std::chrono::milliseconds(
+            static_cast<long long>(simTime().dbl() * 1000.0)));
+    auto elapsed = now - mLastCamTime;
+
+    return mDccEntity->checkCamGeneration(
+        headingChanged ? HEADING_THRESHOLD_DEG + 1.0 : 0.0,
+        deltaPos_m,
+        deltaSpeed_ms,
+        elapsed);
+}
+
+/**
+ * Called by DemoBaseApplLayer immediately after a CAM is sent.
+ * Saves the current vehicle state as the new reference for delta checks.
+ */
+void VanetzaAdapter::notifyCamSent(const VeinsVehicleDataProvider& vdp)
+{
+    // Save ASN.1 position for distance() in next checkCamGeneration()
+    mLastCamPos.latitude  = static_cast<Latitude_t>(std::lround(vdp.latitude().value()  * 1e7));
+    mLastCamPos.longitude = static_cast<Longitude_t>(std::lround(vdp.longitude().value() * 1e7));
+    mLastCamPos.altitude.altitudeValue      = AltitudeValue_unavailable;
+    mLastCamPos.altitude.altitudeConfidence = AltitudeConfidence_unavailable;
+
+    // Save heading in 1/10° for similar_heading()
+    double h_tenths = std::fmod(
+        std::fmod(vdp.heading().value() * (180.0 / M_PI), 360.0) + 360.0, 360.0) * 10.0;
+    mLastCamHeading = static_cast<HeadingValue_t>(std::lround(h_tenths));
+
+    mLastCamSpeed_ms = vdp.speed().value();
+    mLastCamTime = vanetza::Clock::time_point(
+        std::chrono::milliseconds(
+            static_cast<long long>(simTime().dbl() * 1000.0)));
+    mLastCamValid = true;
+}
+
 // ============================================================
 // Helper: DENM cause → string
 // ============================================================
