@@ -217,7 +217,7 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
         }
 
         // Evaluate ETSI §6.1.3 CAM generation conditions via VanetzaAdapter
-        if (mAdapter->checkCamGeneration(*mVehicleDataProvider)) {
+        if (mAdapter->computeAndCheckCamDeltas(*mVehicleDataProvider)) {
             CamMessage* cam = new CamMessage();
             populateWSM(cam); // → buildCam() → vanetza encode → vanetzaPayload
             EV_INFO << "CAM [TX]: stationID=" << mVehicleDataProvider->station_id()
@@ -466,12 +466,20 @@ void DemoBaseApplLayer::handlePositionUpdate(cObject* obj)
                && simTime() >= start && simTime() <= end;
     };
 
+
+    //Debug log
+    /*EV_INFO << "DENM [DEBUG]: cause=" << cause
+            << " speed_kmh=" << speed_kmh
+            << " t=" << simTime()
+            << " denmStart=" << denmStart
+            << " denmStop=" << denmStop << endl;*/
+
     // Evaluate trigger condition and default re-send interval per cause code
     switch (cause) {
 
         // --- Traffic / speed conditions ---
         case CauseCodeType_trafficCondition:
-            if (speed_kmh < 30.0 && speed_kmh > 1.0) triggerCondition = true;
+            triggerCondition = true;
             defaultInterval = 2.0;
             break;
         case CauseCodeType_slowVehicle:

@@ -5,125 +5,198 @@
 #include <vanetza/dcc/channel_probe_processor.hpp>
 #include <vanetza/dcc/channel_load.hpp>
 #include <vanetza/common/clock.hpp>
+#include <vanetza/asn1/cam.hpp>
+#include <vanetza/asn1/denm.hpp>
+#include <vanetza/asn1/its/TimestampIts.h>
+#include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
 #include <chrono>
+#include <cstdint>
 
 namespace veins {
 
 /**
- * Concrete implementation of Vanetza's TransmitRateControl interface.
+ * Implements the ETSI EN 302 637-2 §6.1.3 CAM generation rate control logic.
  *
- * Implements ETSI EN 302 637-2 V1.4.1 Section 6.1.3 CAM generation rules:
+ * Extends vanetza::dcc::TransmitRateControl to provide:
+ *   - A minimum inter-CAM interval (T_GenCamMin = 100 ms)
+ *   - A maximum inter-CAM interval (T_GenCamMax = 1000 ms)
+ *   - Dynamic interval adjustment based on vehicle dynamics thresholds
+ *     (heading, position, speed deltas)
  *
- * Every T_CheckCamGen (≤ 100 ms), a CAM shall be generated if:
- *
- *   Condition 1) time elapsed since last CAM ≥ T_GenCamMin (100 ms) AND
- *                at least one of:
- *                  - |Δheading|  > 4°
- *                  - |Δposition| > 4 m
- *                  - |Δspeed|    > 0.5 m/s
- *
- *   Condition 2) time elapsed since last CAM ≥ T_GenCam (default = 1000 ms)
- *                (timeout fallback — guarantees at least 1 CAM/sec)
- *
- * Limits:
- *   T_GenCamMin = 100 ms  (max rate: 10 Hz)
- *   T_GenCamMax = 1000 ms (min rate:  1 Hz)
+ * The interval is reduced when dynamics change significantly, and reset
+ * to T_GenCamMax after N_GenCam consecutive dynamic-triggered CAMs.
  */
 class VeinsTransmitRateControl : public vanetza::dcc::TransmitRateControl {
 public:
-    /** Returns the minimum delay before the next transmission (T_GenCamMin = 100 ms) */
+    /**
+     * Returns the minimum transmission delay for a CAM.
+     * Fixed to T_GenCamMin (100 ms) as per ETSI standard.
+     */
     vanetza::Clock::duration delay(const vanetza::dcc::Transmission&) override;
 
     /**
-     * Returns the current CAM generation interval.
-     * - 100 ms  if a dynamics condition (Condition 1) was recently triggered
-     * - 1000 ms otherwise (Condition 2 timeout fallback)
+     * Returns the current CAM generation interval (mTGenCam).
+     * Ranges between T_GenCamMin (100 ms) and T_GenCamMax (1000 ms)
+     * depending on vehicle dynamics.
      */
     vanetza::Clock::duration interval(const vanetza::dcc::Transmission&) override;
 
-    /** Called after each transmission to update internal state */
+    /**
+     * Called after each transmission to update internal state.
+     * Currently a no-op — DCC congestion control not yet integrated.
+     */
     void notify(const vanetza::dcc::Transmission&) override;
 
     /**
-     * Called by VanetzaAdapter every T_CheckCamGen (≤ 100 ms).
-     * Evaluates Condition 1 (dynamics) and Condition 2 (timeout).
-     * Returns true if a CAM shall be generated now.
+     * Evaluates ETSI §6.1.3 CAM generation conditions.
      *
-     * @param deltaHeading_deg  |current heading - last CAM heading| in degrees
-     * @param deltaPos_m        distance from last CAM position in metres
-     * @param deltaSpeed_ms     |current speed - last CAM speed| in m/s
-     * @param elapsed           time elapsed since last CAM generation
+     * Returns true if a new CAM should be generated, based on:
+     *   - elapsed >= T_GenCamMin AND any dynamics threshold exceeded, OR
+     *   - elapsed >= mTGenCam (periodic fallback)
+     *
+     * Updates mTGenCam and mNGenCamCount accordingly:
+     *   - On dynamics trigger: mTGenCam = elapsed, mNGenCamCount++
+     *   - After N_GenCam consecutive dynamic CAMs: reset to T_GenCamMax
+     *   - On periodic trigger: reset mTGenCam to T_GenCamMax
+     *
+     * @param deltaHeading_deg  Absolute heading change since last CAM [degrees]
+     * @param deltaPos_m        Absolute position change since last CAM [meters]
+     * @param deltaSpeed_ms     Absolute speed change since last CAM [m/s]
+     * @param elapsed           Time elapsed since last CAM
      */
-    bool checkCamGeneration(double deltaHeading_deg,
+    bool applyEtsiGenerationRules(double deltaHeading_deg,
                             double deltaPos_m,
                             double deltaSpeed_ms,
                             vanetza::Clock::duration elapsed);
 
 private:
-    // ETSI EN 302 637-2 §6.1.3 timing constants
-    static constexpr auto T_GenCamMin = std::chrono::milliseconds(100);  ///< minimum CAM interval (10 Hz max)
-    static constexpr auto T_GenCamMax = std::chrono::milliseconds(1000); ///< maximum CAM interval ( 1 Hz min)
+    /// Minimum CAM generation interval (ETSI EN 302 637-2 §6.1.3)
+    static constexpr auto T_GenCamMin = std::chrono::milliseconds(100);
+    /// Maximum CAM generation interval (ETSI EN 302 637-2 §6.1.3)
+    static constexpr auto T_GenCamMax = std::chrono::milliseconds(1000);
 
-    // ETSI EN 302 637-2 §6.1.3 dynamics thresholds
-    static constexpr double HEADING_THRESHOLD_DEG = 4.0;  ///< heading change threshold [°]
-    static constexpr double POSITION_THRESHOLD_M  = 4.0;  ///< position change threshold [m]
-    static constexpr double SPEED_THRESHOLD_MS    = 0.5;  ///< speed change threshold [m/s]
+    /// Heading change threshold to trigger a CAM [degrees]
+    static constexpr double HEADING_THRESHOLD_DEG = 4.0;
+    /// Position change threshold to trigger a CAM [meters]
+    static constexpr double POSITION_THRESHOLD_M  = 4.0;
+    /// Speed change threshold to trigger a CAM [m/s]
+    static constexpr double SPEED_THRESHOLD_MS    = 0.5;
 
-    /**
-     * Currently valid upper limit for CAM generation interval.
-     * Set to elapsed time when Condition 1 fires, reset to T_GenCamMax
-     * after N_GenCam consecutive high-frequency CAMs (ETSI §6.1.3).
-     */
+    /// Current CAM generation interval; dynamically adjusted
     vanetza::Clock::duration mTGenCam = T_GenCamMax;
-
-    /**
-     * Counter for consecutive CAMs triggered by Condition 1.
-     * After N_GenCam = 3 consecutive CAMs, mTGenCam resets to T_GenCamMax.
-     */
+    /// Counter of consecutive dynamics-triggered CAMs
     int mNGenCamCount = 0;
-    static constexpr int N_GenCam = 3; ///< max consecutive high-frequency CAMs (ETSI §6.1.3)
+    /// Number of consecutive dynamic CAMs before resetting interval to T_GenCamMax
+    static constexpr int N_GenCam = 3;
 };
 
 /**
- * Concrete implementation of Vanetza's ChannelProbeProcessor interface.
- * Receives channel busy ratio (CBR) measurements from the MAC layer.
- * Currently ignores measurements — can be extended to feed CBR into TRC.
+ * Stub implementation of vanetza::dcc::ChannelProbeProcessor.
+ *
+ * Receives channel load (CBR) measurements from the MAC layer.
+ * Currently a no-op — DCC congestion-based rate adaptation not yet integrated.
+ * Placeholder for future FlowControl / DCC integration (Module 2).
  */
 class VeinsChannelProbeProcessor : public vanetza::dcc::ChannelProbeProcessor {
 public:
-    /** Called with a new channel load measurement from the MAC layer */
-    void indicate(vanetza::dcc::ChannelLoad) override;
+    /**
+     * Called by the MAC layer to report the current channel load.
+     * @param load  Channel busy ratio measurement
+     */
+    void indicate(vanetza::dcc::ChannelLoad load) override;
 };
 
 /**
- * DCC Entity for Veins simulations.
- * Owns and exposes the TransmitRateControl and ChannelProbeProcessor
- * instances required by Vanetza's DCC subsystem.
+ * Central DCC entity for CAM/DENM management in the Veins simulation.
+ *
+ * Extends vanetza::dcc::Entity and acts as the bridge between the
+ * application layer (VanetzaAdapter) and the Vanetza DCC stack.
+ *
+ * Responsibilities:
+ *   1. Rate Control  — delegates to VeinsTransmitRateControl (ETSI §6.1.3)
+ *   2. Channel Probe — delegates to VeinsChannelProbeProcessor (stub)
+ *   3. ASN.1 Population — builds fully populated CAM and DENM structures
+ *      ready for encoding and transmission
  */
 class VeinsDccEntity : public vanetza::dcc::Entity {
 public:
     VeinsDccEntity() = default;
     ~VeinsDccEntity() = default;
 
-    /** Returns the transmit rate controller */
+    /**
+     * Returns the TransmitRateControl interface (VeinsTransmitRateControl).
+     * Used by VanetzaAdapter to query the current CAM generation interval.
+     */
     vanetza::dcc::TransmitRateControl& transmit_rate_control() override;
 
-    /** Returns the channel probe processor */
+    /**
+     * Returns the ChannelProbeProcessor interface (VeinsChannelProbeProcessor).
+     * Used by the MAC layer to report channel load measurements.
+     */
     vanetza::dcc::ChannelProbeProcessor& channel_probe_processor() override;
 
     /**
-     * Forwards CAM generation evaluation to the Transmit Rate Control (TRC).
+     * Forwards the CAM generation check to VeinsTransmitRateControl.
+     * Called by VanetzaAdapter::checkCamGeneration() after computing deltas.
      *
-     * No logic here — the ETSI decision is implemented in TRC.
+     * @param deltaHeading_deg  Absolute heading change since last CAM [degrees]
+     * @param deltaPos_m        Absolute position change since last CAM [meters]
+     * @param deltaSpeed_ms     Absolute speed change since last CAM [m/s]
+     * @param elapsed           Time elapsed since last CAM
+     * @return true if a new CAM should be generated
      */
-    bool checkCamGeneration(bool headingChanged,
+    bool forwardCamGenerationCheck(double deltaHeading_deg,
                             double deltaPos_m,
                             double deltaSpeed_ms,
                             vanetza::Clock::duration elapsed);
 
+    /**
+     * Builds a fully populated ASN.1 CAM structure from the current vehicle state.
+     *
+     * Populates:
+     *   - ITS PDU Header (messageID, protocolVersion, stationID)
+     *   - Basic Container (stationType, referencePosition)
+     *   - High Frequency Container (speed, heading, mandatory unavailable fields)
+     *
+     * All optional fields not yet available are set to their ETSI "unavailable" values.
+     *
+     * @param vdp  Current vehicle data (position, speed, heading, stationID)
+     * @return     Populated vanetza::asn1::Cam ready for encoding
+     */
+    vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp);
+
+    /**
+     * Builds a fully populated ASN.1 DENM structure from the current vehicle state.
+     *
+     * Populates:
+     *   - ITS PDU Header (messageID, protocolVersion, stationID)
+     *   - Management Container (actionID, detectionTime, referenceTime,
+     *                          eventPosition, validityDuration, stationType)
+     *   - Situation Container (informationQuality, causeCode, subCauseCode)
+     *
+     * @param vdp             Current vehicle data (position, stationID)
+     * @param sequenceNumber  DENM sequence number (managed by DemoBaseApplLayer)
+     * @param causeCode       ETSI cause code identifying the event type
+     * @param subCauseCode    ETSI sub-cause code for additional event detail
+     * @return                Populated vanetza::asn1::Denm ready for encoding
+     */
+    vanetza::asn1::Denm buildDenm(const VeinsVehicleDataProvider& vdp,
+                                  uint16_t sequenceNumber,
+                                  int causeCode,
+                                  int subCauseCode);
+
 private:
-    VeinsTransmitRateControl   mTrc; ///< Transmit rate controller instance
-    VeinsChannelProbeProcessor mCpp; ///< Channel probe processor instance
+    /**
+     * Encodes a 64-bit millisecond timestamp into an ASN.1 TimestampIts_t (BER).
+     * Allocates the internal buffer; caller must ensure the struct is zero-initialized.
+     *
+     * @param ts  Output ASN.1 timestamp structure
+     * @param ms  Timestamp value in milliseconds (ITS time reference)
+     */
+    void setTimestamp(TimestampIts_t& ts, uint64_t ms);
+
+    VeinsTransmitRateControl   mTrc;  ///< ETSI §6.1.3 rate control implementation
+    VeinsChannelProbeProcessor mCpp;  ///< Channel load processor (stub)
 };
 
 } // namespace veins

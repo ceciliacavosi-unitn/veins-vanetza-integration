@@ -28,7 +28,7 @@ namespace veins {
 class CamMessage;
 class DenmMessage;
 
-class VanetzaAdapter : public cSimpleModule
+class VanetzaAdapter
 {
 public:
     VanetzaAdapter();
@@ -37,15 +37,6 @@ public:
     // ============================
     // TX helpers
     // ============================
-
-    // build ASN.1 CAM
-    vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp);
-
-    // build ASN.1 DENM
-    vanetza::asn1::Denm buildDenm(const VeinsVehicleDataProvider& vdp,
-                                  uint16_t sequenceNumber,
-                                  int causeCode,
-                                  int subCauseCode);
 
     // populate only CAM/DENM parts (called from DemoBaseApplLayer)
     void populateCAM(CamMessage* cam,
@@ -73,45 +64,27 @@ public:
     // DCC access (for scheduling)
     // ============================
 
-    /**
-     * Returns the DCC TransmitRateControl interface.
-     * Use this in DemoBaseApplLayer to get the CAM interval:
-     *   auto interval = mAdapter->dccEntity().transmit_rate_control().interval();
-     */
     vanetza::dcc::Entity& getDccEntity();
 
     // ============================
     // DCC / CAM generation check
     // ============================
 
-    /**
-     * Extracts vehicle state and computes deltas (position, heading, speed)
-     * using Vanetza utilities, then forwards them to the DCC layer.
-     *
-     * Does not implement ETSI decision logic.
-     */
-    bool checkCamGeneration(const VeinsVehicleDataProvider& vdp);
-
-    /**
-     * Must be called after each CAM is actually sent.
-     * Resets the last-CAM reference state (position, speed, heading, time).
-     */
+    bool computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vdp);
     void notifyCamSent(const VeinsVehicleDataProvider& vdp);
 
     // DENM message cause code to string
     std::string denmCauseToString(int cause);
 
 private:
-    void setTimestamp(TimestampIts_t& ts, uint64_t ms);
     std::unique_ptr<VeinsDccEntity> mDccEntity;
 
     // --- Last CAM reference state (for ETSI §6.1.3 delta checks) ---
-    // Uses Vanetza ASN.1 types so similar_heading() and distance() can be called directly
-    ReferencePosition_t         mLastCamPos;             ///< position at last CAM (ASN.1)
-    HeadingValue_t              mLastCamHeading = HeadingValue_unavailable; ///< heading at last CAM (1/10°)
-    double                      mLastCamSpeed_ms = 0.0;  ///< speed at last CAM [m/s]
-    vanetza::Clock::time_point  mLastCamTime;             ///< simtime at last CAM
-    bool                        mLastCamValid = false;    ///< false until first CAM sent
+    ReferencePosition_t         mLastCamPos;
+    HeadingValue_t              mLastCamHeading = HeadingValue_unavailable;
+    double                      mLastCamSpeed_ms = 0.0;
+    vanetza::Clock::time_point  mLastCamTime;
+    bool                        mLastCamValid = false;
 };
 
 } // namespace veins
