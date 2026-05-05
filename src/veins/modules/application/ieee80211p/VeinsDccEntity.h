@@ -8,6 +8,8 @@
 #include <vanetza/asn1/cam.hpp>
 #include <vanetza/asn1/denm.hpp>
 #include <vanetza/asn1/its/TimestampIts.h>
+#include <vanetza/facilities/cam_functions.hpp>
+#include <vanetza/common/position_fix.hpp>
 #include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
 #include <chrono>
 #include <cstdint>

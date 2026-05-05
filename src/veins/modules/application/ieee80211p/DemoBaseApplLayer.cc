@@ -41,11 +41,14 @@ void DemoBaseApplLayer::initialize(int stage)
         // Create the Vanetza-compatible data provider (used by buildCam / buildDenm)
         mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
 
+        // Create the Adapter that handles serialization/deserialization between Veins and Vanetza
         mAdapter = std::make_unique<VanetzaAdapter>();
 
+        // Access the annotation manager for visual debug overlays in the simulation
         annotations = AnnotationManagerAccess().getIfExists();
         ASSERT(annotations);
 
+        // Access the MAC layer (802.11p) for sending and receiving messages
         mac = FindModule<DemoBaseApplLayerToMac1609_4Interface*>::findSubModule(getParentModule());
         ASSERT(mac);
 

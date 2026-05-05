@@ -12,6 +12,9 @@ VanetzaAdapter::VanetzaAdapter()
 
 // ============================================================
 // DCC entity access
+// Returns a reference to the internal VeinsDccEntity, which manages
+// CAM generation rules (ETSI TRC) and is the entry point for future
+// DCC (Decentralized Congestion Control) integration.
 // ============================================================
 
 vanetza::dcc::Entity& VanetzaAdapter::getDccEntity()
@@ -21,34 +24,52 @@ vanetza::dcc::Entity& VanetzaAdapter::getDccEntity()
 
 // ============================================================
 // CAM generation check — ETSI EN 302 637-2 §6.1.3
+//
+// Computes the delta values (position, heading, speed, elapsed time)
+// between the current vehicle state and the state at the last CAM sent,
+// then delegates the generation decision to VeinsDccEntity (TRC rules).
+//
+// Returns true  → a new CAM should be generated and transmitted.
+// Returns false → no CAM needed at this T_CheckCamGen tick.
+//
+// On the very first call (mLastCamValid == false), always returns true
+// to ensure the first CAM is sent unconditionally.
 // ============================================================
 
 bool VanetzaAdapter::computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vdp)
 {
+    // No reference state yet: force the first CAM transmission
     if (!mLastCamValid) return true;
 
+    // Build current ASN.1 position (scaled to 1e-7 degrees as per ETSI)
     ReferencePosition_t posNow{};
     posNow.latitude  = static_cast<Latitude_t>(std::lround(vdp.latitude().value()  * 1e7));
     posNow.longitude = static_cast<Longitude_t>(std::lround(vdp.longitude().value() * 1e7));
     posNow.altitude.altitudeValue      = AltitudeValue_unavailable;
     posNow.altitude.altitudeConfidence = AltitudeConfidence_unavailable;
 
+    // Compute Euclidean distance from last CAM position (metres)
     vanetza::units::Length deltaPos =
         vanetza::facilities::distance(posNow, mLastCamPos);
     double deltaPos_m = deltaPos / vanetza::units::si::meter;
 
+    // Compute shortest angular difference between current and last heading (degrees)
+    // mLastCamHeading is stored in tenths of degrees (ETSI HeadingValue_t), so divide by 10
     double headingNow_deg  = std::fmod(vdp.heading().value() * (180.0 / M_PI) + 360.0, 360.0);
     double headingLast_deg = std::fmod(mLastCamHeading / 10.0 + 360.0, 360.0);
     double deltaHeading_deg = std::abs(headingNow_deg - headingLast_deg);
     if (deltaHeading_deg > 180.0) deltaHeading_deg = 360.0 - deltaHeading_deg;
 
+    // Compute absolute speed difference (m/s)
     double deltaSpeed_ms = std::abs(vdp.speed().value() - mLastCamSpeed_ms);
 
+    // Compute elapsed time since last CAM (used by TRC to enforce T_GenCam limits)
     auto now = vanetza::Clock::time_point(
         std::chrono::milliseconds(
             static_cast<long long>(simTime().dbl() * 1000.0)));
     auto elapsed = now - mLastCamTime;
 
+    // Delegate the generation decision to VeinsDccEntity (ETSI TRC rules)
     return mDccEntity->forwardCamGenerationCheck(
         deltaHeading_deg,
         deltaPos_m,
@@ -56,26 +77,41 @@ bool VanetzaAdapter::computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vd
         elapsed);
 }
 
+// Called by the application layer immediately after a CAM has been sent.
+// Saves the current vehicle state as the new reference point for the next
+// delta computation in computeAndCheckCamDeltas().
+// Without this call, the delta thresholds would always be evaluated against
+// the very first CAM ever sent, causing incorrect generation decisions.
 void VanetzaAdapter::notifyCamSent(const VeinsVehicleDataProvider& vdp)
 {
+    // Save current position as ASN.1 ReferencePosition (scaled to 1e-7 degrees)
     mLastCamPos.latitude  = static_cast<Latitude_t>(std::lround(vdp.latitude().value()  * 1e7));
     mLastCamPos.longitude = static_cast<Longitude_t>(std::lround(vdp.longitude().value() * 1e7));
     mLastCamPos.altitude.altitudeValue      = AltitudeValue_unavailable;
     mLastCamPos.altitude.altitudeConfidence = AltitudeConfidence_unavailable;
 
+    // Save heading in tenths of degrees (ETSI HeadingValue_t format)
     double h_tenths = std::fmod(
         std::fmod(vdp.heading().value() * (180.0 / M_PI), 360.0) + 360.0, 360.0) * 10.0;
     mLastCamHeading = static_cast<HeadingValue_t>(std::lround(h_tenths));
 
+    // Save speed (m/s) and timestamp for next delta computation
     mLastCamSpeed_ms = vdp.speed().value();
     mLastCamTime = vanetza::Clock::time_point(
         std::chrono::milliseconds(
             static_cast<long long>(simTime().dbl() * 1000.0)));
+
+    // Mark reference state as valid so future calls to computeAndCheckCamDeltas()
+    // will perform the full delta check instead of forcing transmission
     mLastCamValid = true;
 }
 
 // ============================================================
-// Helper: DENM cause → string
+// Helper: DENM cause code → human-readable string
+//
+// Maps ETSI EN 302 637-3 CauseCode integer values to their
+// corresponding string identifiers for logging and debug purposes.
+// Source: ETSI EN 302 637-3 Annex A, Table A.1.
 // ============================================================
 
 std::string VanetzaAdapter::denmCauseToString(int cause)
@@ -112,7 +148,14 @@ std::string VanetzaAdapter::denmCauseToString(int cause)
 }
 
 // ============================================================
-// POPULATE CAM — chiama mDccEntity->buildCam()
+// POPULATE CAM (TX serialization pipeline)
+//
+// Serialization flow:
+//   1. buildCam()  — VeinsDccEntity populates the ASN.1 CAM structure
+//                    using the current vehicle state from the DataProvider
+//   2. encode()    — Vanetza encodes the ASN.1 structure into a raw byte buffer
+//   3. setVanetzaPayload() — the byte buffer is copied into the OMNeT++ message
+//                            field-by-field so it can be transmitted by Veins
 // ============================================================
 
 void VanetzaAdapter::populateCAM(CamMessage* cam,
@@ -122,13 +165,16 @@ void VanetzaAdapter::populateCAM(CamMessage* cam,
 {
     if (!vdp) return;
 
-    auto vanetzaCam = mDccEntity->buildCam(*vdp);   // ← ora in VeinsDccEntity
+    // Step 1: build and encode the CAM via VeinsDccEntity
+    auto vanetzaCam = mDccEntity->buildCam(*vdp);
     vanetza::ByteBuffer buffer = vanetzaCam.encode();
 
+    // Step 2: copy the encoded bytes into the OMNeT++ CamMessage payload
     cam->setVanetzaPayloadArraySize(buffer.size());
     for (size_t i = 0; i < buffer.size(); ++i)
         cam->setVanetzaPayload(i, buffer[i]);
 
+    // Step 3: set message size and radio priority
     cam->setByteLength(buffer.size());
     cam->setBitLength(headerLength + buffer.size() * 8);
     cam->setUserPriority(priority);
