@@ -47,12 +47,38 @@ module RSU
             parameters:
                 @display("p=130,172;i=block/cogwheel");
         }
-        
-    connections:
-        nic.upperLayerOut --> appl.lowerLayerIn;
-        nic.upperLayerIn <-- appl.lowerLayerOut;
-        nic.upperControlOut --> appl.lowerControlIn;
-        nic.upperControlIn <-- appl.lowerControlOut;
+
+        adapter: veins.modules.application.ieee80211p.VanetzaAdapter {
+            parameters:
+                @display("p=130,50;i=block/network2");
+        }
+
+	connections:
+        // =========================
+        // DATA PLANE
+        // =========================
+
+        nic.upperLayerOut       --> adapter.lowerLayerIn;
+        adapter.upperLayerOut   --> appl.lowerLayerIn;
+
+        appl.lowerLayerOut      --> adapter.upperLayerIn;
+        adapter.lowerLayerOut   --> nic.upperLayerIn;
+
+
+        // =========================
+        // CONTROL PLANE
+        // =========================
+
+        nic.upperControlOut     --> adapter.lowerControlIn;
+        adapter.upperControlOut --> appl.lowerControlIn;
+
+        appl.lowerControlOut    --> adapter.upperControlIn;
+        adapter.lowerControlOut --> nic.upperControlIn;
+
+
+        // =========================
+        // RADIO
+        // =========================
 
         veinsradioIn --> nic.radioIn;
 }

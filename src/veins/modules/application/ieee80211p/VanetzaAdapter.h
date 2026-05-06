@@ -23,12 +23,14 @@
 #include "veins/modules/messages/CamMessage_m.h"
 #include "veins/modules/messages/DenmMessage_m.h"
 
+using namespace omnetpp;
+
 namespace veins {
 
 class CamMessage;
 class DenmMessage;
 
-class VanetzaAdapter: public omnetpp::cSimpleModule
+class VanetzaAdapter: public cSimpleModule
 {
 public:
     VanetzaAdapter();

@@ -268,7 +268,39 @@ void VanetzaAdapter::onDENM(DenmMessage* denmMsg, const std::string& nodeName)
     }
 }
 
-void VanetzaAdapter::initialize(){};
-void VanetzaAdapter::handleMessage(omnetpp::cMessage* msg){};
+void VanetzaAdapter::initialize()
+{
+    EV_INFO << "VanetzaAdapter initialized as OMNeT++ module at "
+            << getFullPath() << "\n";
+}
+
+void VanetzaAdapter::handleMessage(cMessage* msg)
+{
+    // Diagnostic temporary log for ALL messages to see what arrives
+    EV_INFO << "VanetzaAdapter received type=" << msg->getClassName()
+            << " name='" << msg->getName() << "' on gate "
+            << msg->getArrivalGate()->getFullName()
+            << " at " << getFullPath() << "\n";
+
+    // forwarding (unchanged)
+    if (msg->arrivedOn("upperLayerIn")) {
+        send(msg, "lowerLayerOut");
+    }
+    else if (msg->arrivedOn("lowerLayerIn")) {
+        send(msg, "upperLayerOut");
+    }
+    else if (msg->arrivedOn("upperControlIn")) {
+        send(msg, "lowerControlOut");
+    }
+    else if (msg->arrivedOn("lowerControlIn")) {
+        send(msg, "upperControlOut");
+    }
+    else {
+        EV_WARN << "VanetzaAdapter received message on unexpected gate "
+                << msg->getArrivalGate()->getFullName()
+                << "; deleting message\n";
+        delete msg;
+    }
+}
 
 } // namespace veins

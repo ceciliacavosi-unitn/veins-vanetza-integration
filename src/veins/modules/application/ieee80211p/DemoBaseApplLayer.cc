@@ -42,7 +42,10 @@ void DemoBaseApplLayer::initialize(int stage)
         mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
 
         // Create the Adapter that handles serialization/deserialization between Veins and Vanetza
-        mAdapter = std::make_unique<VanetzaAdapter>();
+        mAdapter = FindModule<VanetzaAdapter*>::findSubModule(getParentModule());
+        if (!mAdapter) {
+            throw cRuntimeError("VanetzaAdapter submodule not found in host. Check Car.ned!");
+        }
 
         // Access the annotation manager for visual debug overlays in the simulation
         annotations = AnnotationManagerAccess().getIfExists();

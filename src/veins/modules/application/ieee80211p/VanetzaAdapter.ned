@@ -1,13 +1,28 @@
 package veins.modules.application.ieee80211p;
 
 //
-// Modulo adattatore per l'integrazione della libreria Vanetza in Veins.
-// Gestisce la logica di generazione CAM (ETSI TRC) e la serializzazione/decodifica
-// dei messaggi V2X (CAM e DENM) verso il data provider del veicolo.
+// Adapter module for integrating the Vanetza library into the Veins framework.
+// Sits between the application layer and the NIC, handling:
+//   - CAM generation logic (ETSI EN 302 637-2 TRC rules)
+//   - Serialization and deserialization of V2X messages (CAM and DENM)
+//   - Forwarding of data and control messages between appl and nic
 //
 simple VanetzaAdapter
 {
     parameters:
         @display("i=block/network2");
         @class(veins::VanetzaAdapter);
+
+    gates:
+        // --- Data plane ---
+        input upperLayerIn;    // incoming data from application layer
+        output upperLayerOut;  // outgoing data to application layer
+        input lowerLayerIn;    // incoming data from NIC
+        output lowerLayerOut;  // outgoing data to NIC
+
+        // --- Control plane ---
+        input upperControlIn;    // control messages from application layer
+        output upperControlOut;  // control messages to application layer
+        input lowerControlIn;    // control messages from NIC
+        output lowerControlOut;  // control messages to NIC
 }

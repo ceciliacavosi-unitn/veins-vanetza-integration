@@ -49,13 +49,54 @@ module Car
                 @display("p=130,172;i=block/cogwheel");
         }
 
+        adapter: veins.modules.application.ieee80211p.VanetzaAdapter {
+            parameters:
+                @display("p=130,50;i=block/network2");
+        }
+
+    //connections:
+    //    appl.lowerLayerOut --> nic.upperLayerIn;
+	//	nic.upperLayerOut --> appl.lowerLayerIn;
+
+    //    nic.upperControlOut --> appl.lowerControlIn;
+    //    nic.upperControlIn <-- appl.lowerControlOut;
+
+    //    veinsradioIn --> nic.radioIn;
+
+
     connections:
-        appl.lowerLayerOut --> nic.upperLayerIn;
-		nic.upperLayerOut --> appl.lowerLayerIn;
+        // =========================
+        // DATA PLANE
+        // =========================
 
-        nic.upperControlOut --> appl.lowerControlIn;
-        nic.upperControlIn <-- appl.lowerControlOut;
+        // before: appl.lowerLayerOut --> nic.upperLayerIn;
+        appl.lowerLayerOut --> adapter.upperLayerIn;
+        adapter.lowerLayerOut --> nic.upperLayerIn;
 
+
+        // before: nic.upperLayerOut --> appl.lowerLayerIn;
+        nic.upperLayerOut --> adapter.lowerLayerIn;
+        adapter.upperLayerOut --> appl.lowerLayerIn;
+
+
+        // =========================
+        // CONTROL PLANE
+        // =========================
+
+        // before: nic.upperControlIn <-- appl.lowerControlOut;
+        appl.lowerControlOut --> adapter.upperControlIn;
+        adapter.lowerControlOut --> nic.upperControlIn;
+
+
+        // before: nic.upperControlOut --> appl.lowerControlIn;
+        nic.upperControlOut --> adapter.lowerControlIn;
+        adapter.upperControlOut --> appl.lowerControlIn;
+
+
+        // =========================
+        // RADIO (unchanged)
+        // =========================
+
+        // before: veinsradioIn --> nic.radioIn;
         veinsradioIn --> nic.radioIn;
-
 }

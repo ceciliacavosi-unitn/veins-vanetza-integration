@@ -144,7 +144,9 @@ protected:
     std::unique_ptr<VeinsVehicleDataProvider> mVehicleDataProvider;
 
 
-    std::unique_ptr<VanetzaAdapter> mAdapter;
+    /// Adapter module bridging the Veins application layer and the NIC.
+    /// Created in initialize() and handles encoding/decoding of V2X messages (CAM, DENM) via Vanetza.
+    VanetzaAdapter* mAdapter = nullptr;
 
     // --------------------------------------------------------
     //  Vehicle state
