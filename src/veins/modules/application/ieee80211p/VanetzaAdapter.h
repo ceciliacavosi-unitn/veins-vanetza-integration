@@ -28,11 +28,11 @@ namespace veins {
 class CamMessage;
 class DenmMessage;
 
-class VanetzaAdapter
+class VanetzaAdapter: public omnetpp::cSimpleModule
 {
 public:
     VanetzaAdapter();
-    ~VanetzaAdapter() = default;
+    ~VanetzaAdapter(){}
 
     // ============================
     // TX helpers
@@ -75,6 +75,9 @@ public:
 
     // DENM message cause code to string
     std::string denmCauseToString(int cause);
+
+    void initialize() override;
+    void handleMessage(omnetpp::cMessage* msg) override;
 
 private:
     std::unique_ptr<VeinsDccEntity> mDccEntity;

@@ -3,6 +3,8 @@
 
 using namespace omnetpp;
 
+Define_Module(veins::VanetzaAdapter);
+
 namespace veins {
 
 VanetzaAdapter::VanetzaAdapter()
@@ -265,5 +267,8 @@ void VanetzaAdapter::onDENM(DenmMessage* denmMsg, const std::string& nodeName)
         EV_ERROR << "DENM decode error\n";
     }
 }
+
+void VanetzaAdapter::initialize(){};
+void VanetzaAdapter::handleMessage(omnetpp::cMessage* msg){};
 
 } // namespace veins
