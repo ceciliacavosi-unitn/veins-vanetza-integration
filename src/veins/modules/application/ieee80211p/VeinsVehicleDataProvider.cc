@@ -10,7 +10,17 @@
 
 #include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
 
-using namespace veins;
+using namespace omnetpp;
+
+Define_Module(veins::VeinsVehicleDataProvider);
+
+namespace veins {
+
+// Default constructor required by Define_Module / OMNeT++ module system
+VeinsVehicleDataProvider::VeinsVehicleDataProvider()
+    : mMobility(nullptr)
+{
+}
 
 VeinsVehicleDataProvider::VeinsVehicleDataProvider(BaseMobility* mob)
 : mMobility(mob)
@@ -20,6 +30,35 @@ VeinsVehicleDataProvider::VeinsVehicleDataProvider(BaseMobility* mob)
         hostName = mMobility->getParentModule()->getFullName();
     EV_INFO << "VeinsVehicleDataProvider constructed; mobility=" << (void*)mMobility
             << " host=" << (hostName ? hostName : "null") << " t=" << simTime() << "\n";
+}
+
+void VeinsVehicleDataProvider::initialize(int stage)
+{
+    cSimpleModule::initialize(stage);
+
+    if (stage == 0) {
+        // Resolve mobility module from the host (parent of parent)
+        cModule* host = getParentModule();
+        if (host) {
+            mMobility = dynamic_cast<BaseMobility*>(host->getSubmodule("mobility"));
+        }
+        if (!mMobility) {
+            EV_WARN << "VeinsVehicleDataProvider: mobility submodule not found in host "
+                    << (host ? host->getFullName() : "<​no-host>") << "\n";
+        } else {
+            EV_INFO << "VeinsVehicleDataProvider initialized; host="
+                    << host->getFullName() << " t=" << simTime() << "\n";
+        }
+    }
+}
+
+void VeinsVehicleDataProvider::handleMessage(omnetpp::cMessage* msg)
+{
+    // VeinsVehicleDataProvider does not receive messages directly.
+    // All data is read on demand via getter methods.
+    EV_WARN << "VeinsVehicleDataProvider: unexpected message received: "
+            << msg->getName() << "\n";
+    delete msg;
 }
 
 // Converts SUMO Y-coordinate (metres north of origin) to decimal degrees latitude.
@@ -81,3 +120,5 @@ vanetza::Clock::time_point VeinsVehicleDataProvider::timestamp() const {
     auto ms = duration_cast<milliseconds>(duration<double>(simTime().dbl()));
     return vanetza::Clock::time_point(ms);
 }
+
+} // namespace veins

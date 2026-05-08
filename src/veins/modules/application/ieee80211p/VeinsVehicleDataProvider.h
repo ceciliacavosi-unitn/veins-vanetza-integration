@@ -4,6 +4,7 @@
 #include <cstdint>
 
 // Veins / OMNeT++
+#include <omnetpp.h>
 #include "veins/base/modules/BaseMobility.h" // contiene BaseMobility
 
 // Vanetza types
@@ -14,6 +15,7 @@
 
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 
+using namespace omnetpp;
 
 namespace veins
 {
@@ -28,9 +30,14 @@ using veins::TraCIMobility;
 //  Used by buildCam() and buildDenm() to read position, speed,
 //  heading and station ID when populating message structures.
 // ============================================================
-class VEINS_API VeinsVehicleDataProvider {
+class VEINS_API VeinsVehicleDataProvider : public cSimpleModule{
 public:
+    VeinsVehicleDataProvider();
     explicit VeinsVehicleDataProvider(BaseMobility* mob);
+
+    // OMNeT++ module interface
+    void initialize(int stage) override;
+    void handleMessage(omnetpp::cMessage* msg) override;
 
     // Geographic position (converted from SUMO Cartesian metres)
     vanetza::units::GeoAngle latitude()  const;
