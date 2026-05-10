@@ -54,15 +54,10 @@ module Car
                 @display("p=130,50;i=block/network2");
         }
 
-    //connections:
-    //    appl.lowerLayerOut --> nic.upperLayerIn;
-	//	nic.upperLayerOut --> appl.lowerLayerIn;
-
-    //    nic.upperControlOut --> appl.lowerControlIn;
-    //    nic.upperControlIn <-- appl.lowerControlOut;
-
-    //    veinsradioIn --> nic.radioIn;
-
+        provider: veins.modules.application.ieee80211p.VeinsVehicleDataProvider {
+            parameters:
+                @display("p=200,50");
+        }
 
     connections:
         // =========================

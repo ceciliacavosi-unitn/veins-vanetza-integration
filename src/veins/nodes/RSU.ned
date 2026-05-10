@@ -53,6 +53,11 @@ module RSU
                 @display("p=130,50;i=block/network2");
         }
 
+        provider: veins.modules.application.ieee80211p.VeinsVehicleDataProvider {
+            parameters:
+                @display("p=200,50");
+        }
+
 	connections:
         // =========================
         // DATA PLANE

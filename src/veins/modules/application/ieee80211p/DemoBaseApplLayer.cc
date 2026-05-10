@@ -38,8 +38,12 @@ void DemoBaseApplLayer::initialize(int stage)
             traciVehicle = nullptr;
         }
 
-        // Create the Vanetza-compatible data provider (used by buildCam / buildDenm)
-        mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
+        // Resolve VeinsVehicleDataProvider as an OMNeT++ submodule in the host node
+        mVehicleDataProvider = FindModule<VeinsVehicleDataProvider*>::findSubModule(getParentModule());
+        if (!mVehicleDataProvider) {
+            EV_WARN << "VeinsVehicleDataProvider submodule not found in host "
+                    << getParentModule()->getFullName() << " — CAM/DENM generation may fail\n";
+        }
 
         // Create the Adapter that handles serialization/deserialization between Veins and Vanetza
         mAdapter = FindModule<VanetzaAdapter*>::findSubModule(getParentModule());
@@ -116,10 +120,6 @@ void DemoBaseApplLayer::initialize(int stage)
             }
             if (sendBeacons) scheduleAt(firstBeacon, sendBeaconEvt);
         }
-
-        // Lazily re-create the data provider if mobility was not yet available at stage 0
-        if (!mVehicleDataProvider && mobility)
-            mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(mobility);
 
         // CAM TX: schedule first check at T_CheckCamGen = 100 ms (ETSI §6.1.3)
         if (mVehicleDataProvider && mobility && dynamic_cast<veins::TraCIMobility*>(mobility))
@@ -330,7 +330,7 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
         //   2. vanetza encodes it into a ByteBuffer
         //   3. ByteBuffer is copied byte-by-byte into vanetzaPayload[]
         if (mVehicleDataProvider) {
-            mAdapter->populateCAM(cam,mVehicleDataProvider.get(), headerLength, beaconUserPriority);
+            mAdapter->populateCAM(cam, mVehicleDataProvider, headerLength, beaconUserPriority);
             cam->setChannelNumber(static_cast<int>(Channel::cch));
             cam->setPsid(36); // ITS CAM PSID
         } else {
@@ -349,7 +349,7 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
             try {
                 denmSequenceNumber++;
                 mAdapter->populateDENM(denm,
-                                       mVehicleDataProvider.get(),
+                                       mVehicleDataProvider,
                                        denmSequenceNumber,
                                        par("denmDefaultCause"),
                                        par("denmDefaultSubcause"),
@@ -429,12 +429,6 @@ void DemoBaseApplLayer::handlePositionUpdate(cObject* obj)
     ChannelMobilityPtrType const mob = check_and_cast<ChannelMobilityPtrType>(obj);
     curPosition = mob->getPositionAt(simTime());
     curSpeed    = mob->getCurrentSpeed();
-
-    // Lazily create data provider and schedule first CAM if not yet done
-    if (!mVehicleDataProvider && this->mobility) {
-        mVehicleDataProvider = std::make_unique<VeinsVehicleDataProvider>(this->mobility);
-        if (!sendCamEvt->isScheduled()) scheduleAt(simTime(), sendCamEvt);
-    }
 
     int cause = par("denmDefaultCause");
     if (cause < 0) return; // no DENM cause configured — nothing to do

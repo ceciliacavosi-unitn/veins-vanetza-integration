@@ -37,17 +37,13 @@ void VeinsVehicleDataProvider::initialize(int stage)
     cSimpleModule::initialize(stage);
 
     if (stage == 0) {
-        // Resolve mobility module from the host (parent of parent)
-        cModule* host = getParentModule();
-        if (host) {
-            mMobility = dynamic_cast<BaseMobility*>(host->getSubmodule("mobility"));
-        }
+        mMobility = FindModule<BaseMobility*>::findSubModule(getParentModule());
         if (!mMobility) {
-            EV_WARN << "VeinsVehicleDataProvider: mobility submodule not found in host "
-                    << (host ? host->getFullName() : "<​no-host>") << "\n";
+            EV_WARN << "VeinsVehicleDataProvider: mobility not found in host "
+                    << getParentModule()->getFullName() << "\n";
         } else {
-            EV_INFO << "VeinsVehicleDataProvider initialized; host="
-                    << host->getFullName() << " t=" << simTime() << "\n";
+            EV_INFO << "VeinsVehicleDataProvider initialized as OMNeT++ module at "
+                    << getFullPath() << "\n";
         }
     }
 }

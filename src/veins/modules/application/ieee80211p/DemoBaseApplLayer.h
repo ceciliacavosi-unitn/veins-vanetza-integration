@@ -139,9 +139,9 @@ protected:
     AnnotationManager*                      annotations  = nullptr; ///< Annotation manager for visualization
     DemoBaseApplLayerToMac1609_4Interface*  mac          = nullptr; ///< Interface to MAC 802.11p layer
 
-    /// Provides Vanetza-compatible vehicle data (position, speed, heading, stationID).
-    /// Created in initialize() and used by buildCam() / buildDenm() inside populateWSM().
-    std::unique_ptr<VeinsVehicleDataProvider> mVehicleDataProvider;
+    /// Pointer to the VeinsVehicleDataProvider submodule in the host node.
+    /// Resolved in initialize() via FindModule; provides kinematic data for CAM/DENM construction.
+    VeinsVehicleDataProvider* mVehicleDataProvider = nullptr;
 
 
     /// Adapter module bridging the Veins application layer and the NIC.
