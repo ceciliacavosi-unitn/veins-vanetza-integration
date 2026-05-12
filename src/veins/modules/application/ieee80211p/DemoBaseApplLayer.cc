@@ -38,17 +38,17 @@ void DemoBaseApplLayer::initialize(int stage)
             traciVehicle = nullptr;
         }
 
-        // Resolve VeinsVehicleDataProvider as an OMNeT++ submodule in the host node
-        mVehicleDataProvider = FindModule<VeinsVehicleDataProvider*>::findSubModule(getParentModule());
-        if (!mVehicleDataProvider) {
-            EV_WARN << "VeinsVehicleDataProvider submodule not found in host "
+        // Resolve ApplicationToVanetzaConverter as an OMNeT++ submodule in the host node
+        applicationToVanetzaConverter = FindModule<ApplicationToVanetzaConverter*>::findSubModule(getParentModule());
+        if (!applicationToVanetzaConverter) {
+            EV_WARN << "ApplicationToVanetzaConverter submodule not found in host "
                     << getParentModule()->getFullName() << " — CAM/DENM generation may fail\n";
         }
 
         // Create the Adapter that handles serialization/deserialization between Veins and Vanetza
-        mAdapter = FindModule<VanetzaAdapter*>::findSubModule(getParentModule());
+        mAdapter = FindModule<VanetzaToVeinsBridge*>::findSubModule(getParentModule());
         if (!mAdapter) {
-            throw cRuntimeError("VanetzaAdapter submodule not found in host. Check Car.ned!");
+            throw cRuntimeError("VanetzaToVeinsBridge submodule not found in host. Check Car.ned!");
         }
 
         // Access the annotation manager for visual debug overlays in the simulation
@@ -122,7 +122,7 @@ void DemoBaseApplLayer::initialize(int stage)
         }
 
         // CAM TX: schedule first check at T_CheckCamGen = 100 ms (ETSI §6.1.3)
-        if (mVehicleDataProvider && mobility && dynamic_cast<veins::TraCIMobility*>(mobility))
+        if (applicationToVanetzaConverter && mobility && dynamic_cast<veins::TraCIMobility*>(mobility))
             scheduleAt(simTime() + 0.1, sendCamEvt);
 
 
@@ -215,27 +215,27 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
 
     /// --- CAM TX (vehicles only) — ETSI EN 302 637-2 §6.1.3 ---
     case SEND_CAM_EVT: {
-        if (!mVehicleDataProvider || !mobility) {
-            EV_WARN << "CAM [TX]: VeinsVehicleDataProvider not ready — retrying in 100ms"
+        if (!applicationToVanetzaConverter || !mobility) {
+            EV_WARN << "CAM [TX]: ApplicationToVanetzaConverter not ready — retrying in 100ms"
                     << " name=" << getParentModule()->getFullName() << "\n";
             scheduleAt(simTime() + 0.1, sendCamEvt); // retry after T_CheckCamGen
             break;
         }
 
-        // Evaluate ETSI §6.1.3 CAM generation conditions via VanetzaAdapter
-        if (mAdapter->computeAndCheckCamDeltas(*mVehicleDataProvider)) {
+        // Evaluate ETSI §6.1.3 CAM generation conditions via VanetzaToVeinsBridge
+        if (mAdapter->computeAndCheckCamDeltas(*applicationToVanetzaConverter)) {
             CamMessage* cam = new CamMessage();
             populateWSM(cam); // → buildCam() → vanetza encode → vanetzaPayload
-            EV_INFO << "CAM [TX]: stationID=" << mVehicleDataProvider->station_id()
-                    << " pos=(" << mVehicleDataProvider->latitude().value()
-                    << ", "     << mVehicleDataProvider->longitude().value() << ")"
-                    << " speed=" << mVehicleDataProvider->speed().value() << " m/s"
+            EV_INFO << "CAM [TX]: stationID=" << applicationToVanetzaConverter->station_id()
+                    << " pos=(" << applicationToVanetzaConverter->latitude().value()
+                    << ", "     << applicationToVanetzaConverter->longitude().value() << ")"
+                    << " speed=" << applicationToVanetzaConverter->speed().value() << " m/s"
                     << " name=" << getParentModule()->getFullName()
                     << " t=" << simTime() << "\n";
             sendDown(cam);
 
             // Notify adapter that a CAM was sent — resets delta reference state
-            mAdapter->notifyCamSent(*mVehicleDataProvider);
+            mAdapter->notifyCamSent(*applicationToVanetzaConverter);
         }
 
         // Always reschedule at T_CheckCamGen = 100 ms (ETSI §6.1.3)
@@ -245,8 +245,8 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
 
     // --- DENM TX ---
     case SEND_DENM_EVT: {
-        if (!mVehicleDataProvider) {
-            EV_WARN << "DENM [TX]: VeinsVehicleDataProvider not ready — skipping"
+        if (!applicationToVanetzaConverter) {
+            EV_WARN << "DENM [TX]: ApplicationToVanetzaConverter not ready — skipping"
                     << " name=" << getParentModule()->getFullName() << "\n";
             break;
         }
@@ -293,11 +293,11 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
 //  Fills all fields of the outgoing BaseFrame1609_4 subclass.
 //
 //  CamMessage branch:
-//    buildCam(*mVehicleDataProvider) → vanetza::asn1::Cam
+//    buildCam(*applicationToVanetzaConverter) → vanetza::asn1::Cam
 //    cam.encode() → ByteBuffer → copied into vanetzaPayload[]
 //
 //  DenmMessage branch:
-//    buildDenm(*mVehicleDataProvider, seqNum, cause, subcause)
+//    buildDenm(*applicationToVanetzaConverter, seqNum, cause, subcause)
 //    → vanetza::asn1::Denm
 //    denm.encode() → ByteBuffer → copied into vanetzaPayload[]
 //
@@ -326,15 +326,15 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
     }
     else if (CamMessage* cam = dynamic_cast<CamMessage*>(wsm)) {
         // CAM TX path:
-        //   1. buildCam() fills the ASN.1 structure from VeinsVehicleDataProvider
+        //   1. buildCam() fills the ASN.1 structure from ApplicationToVanetzaConverter
         //   2. vanetza encodes it into a ByteBuffer
         //   3. ByteBuffer is copied byte-by-byte into vanetzaPayload[]
-        if (mVehicleDataProvider) {
-            mAdapter->populateCAM(cam, mVehicleDataProvider, headerLength, beaconUserPriority);
+        if (applicationToVanetzaConverter) {
+            mAdapter->populateCAM(cam, applicationToVanetzaConverter, headerLength, beaconUserPriority);
             cam->setChannelNumber(static_cast<int>(Channel::cch));
             cam->setPsid(36); // ITS CAM PSID
         } else {
-            EV_WARN << "CAM [BUILD]: no VeinsVehicleDataProvider — payload empty\n";
+            EV_WARN << "CAM [BUILD]: no ApplicationToVanetzaConverter — payload empty\n";
             cam->setVanetzaPayloadArraySize(0);
             cam->setByteLength(0);
         }
@@ -345,11 +345,11 @@ void DemoBaseApplLayer::populateWSM(BaseFrame1609_4* wsm, LAddress::L2Type rcvId
         //   2. buildDenm() fills the ASN.1 structure (cause, subcause, position, timestamps)
         //   3. vanetza encodes it into a ByteBuffer
         //   4. ByteBuffer is copied byte-by-byte into vanetzaPayload[]
-        if (mVehicleDataProvider) {
+        if (applicationToVanetzaConverter) {
             try {
                 denmSequenceNumber++;
                 mAdapter->populateDENM(denm,
-                                       mVehicleDataProvider,
+                                       applicationToVanetzaConverter,
                                        denmSequenceNumber,
                                        par("denmDefaultCause"),
                                        par("denmDefaultSubcause"),
@@ -420,7 +420,7 @@ void DemoBaseApplLayer::receiveSignal(cComponent* source, simsignal_t signalID,
 }
 
 // Called on every mobilityStateChangedSignal.
-// Updates curPosition / curSpeed; lazily initialises mVehicleDataProvider.
+// Updates curPosition / curSpeed; lazily initialises applicationToVanetzaConverter.
 // For vehicle nodes: evaluates per-cause trigger conditions and calls
 // triggerDenm() when the condition is met and the rate-limit window has elapsed.
 // Respects the global [denmStartTime, denmStopTime] window from .ini.
@@ -606,8 +606,8 @@ void DemoBaseApplLayer::triggerDenm(CauseCodeType_t eventCause, int cause, int s
 void DemoBaseApplLayer::sendDenmNow(CauseCodeType_t eventCause, int cause, int subcause,
                                      const Coord& eventPos)
 {
-    if (!mVehicleDataProvider) {
-        EV_WARN << "DENM [SEND NOW]: no VeinsVehicleDataProvider — aborted\n";
+    if (!applicationToVanetzaConverter) {
+        EV_WARN << "DENM [SEND NOW]: no ApplicationToVanetzaConverter — aborted\n";
         return;
     }
 

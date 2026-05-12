@@ -5,13 +5,18 @@
 
 // Veins / OMNeT++
 #include <omnetpp.h>
-#include "veins/base/modules/BaseMobility.h" // contiene BaseMobility
+#include "veins/base/modules/BaseMobility.h"
 
 // Vanetza types
 #include "vanetza/common/clock.hpp"
 #include "vanetza/units/angle.hpp"
 #include "vanetza/units/velocity.hpp"
 #include "vanetza/units/acceleration.hpp"
+#include <vanetza/asn1/cam.hpp>
+#include <vanetza/asn1/denm.hpp>
+#include <vanetza/asn1/its/TimestampIts.h>
+#include <vanetza/facilities/cam_functions.hpp>
+#include <vanetza/common/position_fix.hpp>
 
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 
@@ -23,17 +28,17 @@ namespace veins
 using veins::TraCIMobility;
 
 // ============================================================
-//  VeinsVehicleDataProvider
+//  ApplicationToVanetzaConverter
 //
 //  Bridge between the Veins mobility module (BaseMobility /
 //  TraCIMobility) and the Vanetza-style vehicle data interface.
 //  Used by buildCam() and buildDenm() to read position, speed,
 //  heading and station ID when populating message structures.
 // ============================================================
-class VEINS_API VeinsVehicleDataProvider : public cSimpleModule{
+class VEINS_API ApplicationToVanetzaConverter : public cSimpleModule{
 public:
-    VeinsVehicleDataProvider();
-    explicit VeinsVehicleDataProvider(BaseMobility* mob);
+    ApplicationToVanetzaConverter();
+    explicit ApplicationToVanetzaConverter(BaseMobility* mob);
 
     // OMNeT++ module interface
     void initialize(int stage) override;
@@ -58,8 +63,24 @@ public:
     int get_event_cause()    const;
     int get_event_subcause() const;
 
+    // ============================================================
+    // ASN.1 message builders
+    // Populate CAM and DENM structures from the current vehicle state.
+    // ============================================================
+
+    // Builds a fully populated ASN.1 CAM structure from the current vehicle state.
+    vanetza::asn1::Cam  buildCam() const;
+
+    // Builds a fully populated ASN.1 DENM structure from the current vehicle state.
+    vanetza::asn1::Denm buildDenm(uint16_t sequenceNumber,
+                                   int causeCode,
+                                   int subCauseCode) const;
+
 private:
+    // Encodes a 64-bit millisecond timestamp into an ASN.1 TimestampIts_t (BER).
+    static void setTimestamp(TimestampIts_t& ts, uint64_t ms);
     BaseMobility* mMobility; ///< Pointer to the underlying mobility module
+
 };
 
 } // namepspace veins

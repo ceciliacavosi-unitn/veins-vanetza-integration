@@ -1,27 +1,27 @@
-#include "VanetzaAdapter.h"
 #include <omnetpp.h>
+#include <veins/modules/application/ieee80211p/VanetzaToVeinsBridge.h>
 
 using namespace omnetpp;
 
-Define_Module(veins::VanetzaAdapter);
+Define_Module(veins::VanetzaToVeinsBridge);
 
 namespace veins {
 
-VanetzaAdapter::VanetzaAdapter()
-    : mDccEntity(std::make_unique<VeinsDccEntity>())
+VanetzaToVeinsBridge::VanetzaToVeinsBridge()
+    : vanetzaEntityImplementation(std::make_unique<VanetzaEntityImplementation>())
 {
 }
 
 // ============================================================
-// DCC entity access
-// Returns a reference to the internal VeinsDccEntity, which manages
-// CAM generation rules (ETSI TRC) and is the entry point for future
-// DCC (Decentralized Congestion Control) integration.
+// Vanetza entity access
+// Returns a reference to the internal VanetzaEntity, which manages
+// CAM generation scheduling and acts as the entry point between
+// the Veins simulation environment and the Vanetza protocol stack.
 // ============================================================
 
-vanetza::dcc::Entity& VanetzaAdapter::getDccEntity()
+vanetza::dcc::Entity& VanetzaToVeinsBridge::getVanetzaEntity()
 {
-    return *mDccEntity;
+    return *vanetzaEntityImplementation;
 }
 
 // ============================================================
@@ -29,7 +29,7 @@ vanetza::dcc::Entity& VanetzaAdapter::getDccEntity()
 //
 // Computes the delta values (position, heading, speed, elapsed time)
 // between the current vehicle state and the state at the last CAM sent,
-// then delegates the generation decision to VeinsDccEntity (TRC rules).
+// then delegates the generation decision to VanetzaEntityImplementation (TRC rules).
 //
 // Returns true  → a new CAM should be generated and transmitted.
 // Returns false → no CAM needed at this T_CheckCamGen tick.
@@ -38,7 +38,7 @@ vanetza::dcc::Entity& VanetzaAdapter::getDccEntity()
 // to ensure the first CAM is sent unconditionally.
 // ============================================================
 
-bool VanetzaAdapter::computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vdp)
+bool VanetzaToVeinsBridge::computeAndCheckCamDeltas(const ApplicationToVanetzaConverter& vdp)
 {
     // No reference state yet: force the first CAM transmission
     if (!mLastCamValid) return true;
@@ -71,8 +71,8 @@ bool VanetzaAdapter::computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vd
             static_cast<long long>(simTime().dbl() * 1000.0)));
     auto elapsed = now - mLastCamTime;
 
-    // Delegate the generation decision to VeinsDccEntity (ETSI TRC rules)
-    return mDccEntity->forwardCamGenerationCheck(
+    // Delegate the generation decision to VanetzaEntityImplementation (ETSI TRC rules)
+    return vanetzaEntityImplementation->forwardCamGenerationCheck(
         deltaHeading_deg,
         deltaPos_m,
         deltaSpeed_ms,
@@ -84,7 +84,7 @@ bool VanetzaAdapter::computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vd
 // delta computation in computeAndCheckCamDeltas().
 // Without this call, the delta thresholds would always be evaluated against
 // the very first CAM ever sent, causing incorrect generation decisions.
-void VanetzaAdapter::notifyCamSent(const VeinsVehicleDataProvider& vdp)
+void VanetzaToVeinsBridge::notifyCamSent(const ApplicationToVanetzaConverter& vdp)
 {
     // Save current position as ASN.1 ReferencePosition (scaled to 1e-7 degrees)
     mLastCamPos.latitude  = static_cast<Latitude_t>(std::lround(vdp.latitude().value()  * 1e7));
@@ -116,7 +116,7 @@ void VanetzaAdapter::notifyCamSent(const VeinsVehicleDataProvider& vdp)
 // Source: ETSI EN 302 637-3 Annex A, Table A.1.
 // ============================================================
 
-std::string VanetzaAdapter::denmCauseToString(int cause)
+std::string VanetzaToVeinsBridge::denmCauseToString(int cause)
 {
     switch (cause) {
         case 1:  return "trafficCondition";
@@ -153,22 +153,22 @@ std::string VanetzaAdapter::denmCauseToString(int cause)
 // POPULATE CAM (TX serialization pipeline)
 //
 // Serialization flow:
-//   1. buildCam()  — VeinsDccEntity populates the ASN.1 CAM structure
-//                    using the current vehicle state from the DataProvider
+//   1. buildCam()  — ApplicationToVanetzaConverter populates the ASN.1 CAM
+//                    structure using the current vehicle state
 //   2. encode()    — Vanetza encodes the ASN.1 structure into a raw byte buffer
 //   3. setVanetzaPayload() — the byte buffer is copied into the OMNeT++ message
 //                            field-by-field so it can be transmitted by Veins
 // ============================================================
 
-void VanetzaAdapter::populateCAM(CamMessage* cam,
-                                 VeinsVehicleDataProvider* vdp,
+void VanetzaToVeinsBridge::populateCAM(CamMessage* cam,
+                                 ApplicationToVanetzaConverter* vdp,
                                  int headerLength,
                                  int priority)
 {
     if (!vdp) return;
 
-    // Step 1: build and encode the CAM via VeinsDccEntity
-    auto vanetzaCam = mDccEntity->buildCam(*vdp);
+    // Step 1: build and encode the CAM via VanetzaEntityImplementation
+    auto vanetzaCam = vdp->buildCam();
     vanetza::ByteBuffer buffer = vanetzaCam.encode();
 
     // Step 2: copy the encoded bytes into the OMNeT++ CamMessage payload
@@ -183,11 +183,18 @@ void VanetzaAdapter::populateCAM(CamMessage* cam,
 }
 
 // ============================================================
-// POPULATE DENM — chiama mDccEntity->buildDenm()
+// POPULATE DENM (TX serialization pipeline)
+//
+// Serialization flow:
+//   1. buildDenm() — ApplicationToVanetzaConverter populates the ASN.1 DENM
+//                    structure using the current vehicle state and event data
+//   2. encode()    — Vanetza encodes the ASN.1 structure into a raw byte buffer
+//   3. setVanetzaPayload() — the byte buffer is copied into the OMNeT++ message
+//                            field-by-field so it can be transmitted by Veins
 // ============================================================
 
-void VanetzaAdapter::populateDENM(DenmMessage* denm,
-                                  VeinsVehicleDataProvider* vdp,
+void VanetzaToVeinsBridge::populateDENM(DenmMessage* denm,
+                                  ApplicationToVanetzaConverter* vdp,
                                   uint16_t& seq,
                                   int cause,
                                   int subcause,
@@ -197,7 +204,7 @@ void VanetzaAdapter::populateDENM(DenmMessage* denm,
 {
     if (!vdp) return;
 
-    auto vanetzaDenm = mDccEntity->buildDenm(*vdp, seq, cause, subcause);  // ← ora in VeinsDccEntity
+    auto vanetzaDenm = vdp->buildDenm(seq, cause, subcause);
     vanetza::ByteBuffer buffer = vanetzaDenm.encode();
 
     denm->setVanetzaPayloadArraySize(buffer.size());
@@ -216,7 +223,7 @@ void VanetzaAdapter::populateDENM(DenmMessage* denm,
 // RX CAM
 // ============================================================
 
-void VanetzaAdapter::onCAM(CamMessage* camMsg, const std::string& nodeName)
+void VanetzaToVeinsBridge::onCAM(CamMessage* camMsg, const std::string& nodeName)
 {
     size_t n = camMsg->getVanetzaPayloadArraySize();
     vanetza::ByteBuffer buffer(n);
@@ -241,7 +248,7 @@ void VanetzaAdapter::onCAM(CamMessage* camMsg, const std::string& nodeName)
 // RX DENM
 // ============================================================
 
-void VanetzaAdapter::onDENM(DenmMessage* denmMsg, const std::string& nodeName)
+void VanetzaToVeinsBridge::onDENM(DenmMessage* denmMsg, const std::string& nodeName)
 {
     size_t n = denmMsg->getVanetzaPayloadArraySize();
     if (n == 0) return;
@@ -268,16 +275,16 @@ void VanetzaAdapter::onDENM(DenmMessage* denmMsg, const std::string& nodeName)
     }
 }
 
-void VanetzaAdapter::initialize()
+void VanetzaToVeinsBridge::initialize()
 {
-    EV_INFO << "VanetzaAdapter initialized as OMNeT++ module at "
+    EV_INFO << "VanetzaToVeinsBridge initialized as OMNeT++ module at "
             << getFullPath() << "\n";
 }
 
-void VanetzaAdapter::handleMessage(cMessage* msg)
+void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
 {
     // Diagnostic temporary log for ALL messages to see what arrives
-    EV_INFO << "VanetzaAdapter received type=" << msg->getClassName()
+    EV_INFO << "VanetzaToVeinsBridge received type=" << msg->getClassName()
             << " name='" << msg->getName() << "' on gate "
             << msg->getArrivalGate()->getFullName()
             << " at " << getFullPath() << "\n";
@@ -296,7 +303,7 @@ void VanetzaAdapter::handleMessage(cMessage* msg)
         send(msg, "upperControlOut");
     }
     else {
-        EV_WARN << "VanetzaAdapter received message on unexpected gate "
+        EV_WARN << "VanetzaToVeinsBridge received message on unexpected gate "
                 << msg->getArrivalGate()->getFullName()
                 << "; deleting message\n";
         delete msg;

@@ -3,6 +3,8 @@
 // ============================================================
 //  Standard library
 // ============================================================
+#include <veins/modules/application/ieee80211p/ApplicationToVanetzaConverter.h>
+#include <veins/modules/application/ieee80211p/VanetzaToVeinsBridge.h>
 #include <map>
 #include <memory>
 #include <cmath>
@@ -47,14 +49,8 @@
 #include "vanetza/asn1/its/AccidentSubCauseCode.h"
 
 // ============================================================
-//  VeinsVehicleDataProvider
+//  ApplicationToVanetzaConverter
 // ============================================================
-#include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
-
-// ============================================================
-//  VanetzaAdapter
-// ============================================================
-#include "veins/modules/application/ieee80211p/VanetzaAdapter.h"
 
 namespace veins {
 
@@ -139,14 +135,14 @@ protected:
     AnnotationManager*                      annotations  = nullptr; ///< Annotation manager for visualization
     DemoBaseApplLayerToMac1609_4Interface*  mac          = nullptr; ///< Interface to MAC 802.11p layer
 
-    /// Pointer to the VeinsVehicleDataProvider submodule in the host node.
+    /// Pointer to the ApplicationToVanetzaConverter submodule in the host node.
     /// Resolved in initialize() via FindModule; provides kinematic data for CAM/DENM construction.
-    VeinsVehicleDataProvider* mVehicleDataProvider = nullptr;
+    ApplicationToVanetzaConverter* applicationToVanetzaConverter = nullptr;
 
 
     /// Adapter module bridging the Veins application layer and the NIC.
     /// Created in initialize() and handles encoding/decoding of V2X messages (CAM, DENM) via Vanetza.
-    VanetzaAdapter* mAdapter = nullptr;
+    VanetzaToVeinsBridge* mAdapter = nullptr;
 
     // --------------------------------------------------------
     //  Vehicle state
@@ -260,7 +256,7 @@ protected:
 
     /**
      * Called on every mobilityStateChangedSignal.
-     * Updates curPosition / curSpeed, lazily creates mVehicleDataProvider,
+     * Updates curPosition / curSpeed, lazily creates applicationToVanetzaConverter,
      * and evaluates DENM trigger conditions for vehicles.
      */
     virtual void handlePositionUpdate(cObject* obj);

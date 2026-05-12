@@ -5,12 +5,7 @@
 #include <vanetza/dcc/channel_probe_processor.hpp>
 #include <vanetza/dcc/channel_load.hpp>
 #include <vanetza/common/clock.hpp>
-#include <vanetza/asn1/cam.hpp>
-#include <vanetza/asn1/denm.hpp>
-#include <vanetza/asn1/its/TimestampIts.h>
-#include <vanetza/facilities/cam_functions.hpp>
-#include <vanetza/common/position_fix.hpp>
-#include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
+#include <veins/modules/application/ieee80211p/ApplicationToVanetzaConverter.h>
 #include <chrono>
 #include <cstdint>
 
@@ -112,7 +107,7 @@ public:
  * Central DCC entity for CAM/DENM management in the Veins simulation.
  *
  * Extends vanetza::dcc::Entity and acts as the bridge between the
- * application layer (VanetzaAdapter) and the Vanetza DCC stack.
+ * application layer (VanetzaToVeinsBridge) and the Vanetza DCC stack.
  *
  * Responsibilities:
  *   1. Rate Control  — delegates to VeinsTransmitRateControl (ETSI §6.1.3)
@@ -120,14 +115,14 @@ public:
  *   3. ASN.1 Population — builds fully populated CAM and DENM structures
  *      ready for encoding and transmission
  */
-class VeinsDccEntity : public vanetza::dcc::Entity {
+class VanetzaEntityImplementation : public vanetza::dcc::Entity {
 public:
-    VeinsDccEntity() = default;
-    ~VeinsDccEntity() = default;
+    VanetzaEntityImplementation() = default;
+    ~VanetzaEntityImplementation() = default;
 
     /**
      * Returns the TransmitRateControl interface (VeinsTransmitRateControl).
-     * Used by VanetzaAdapter to query the current CAM generation interval.
+     * Used by VanetzaToVeinsBridge to query the current CAM generation interval.
      */
     vanetza::dcc::TransmitRateControl& transmit_rate_control() override;
 
@@ -139,7 +134,7 @@ public:
 
     /**
      * Forwards the CAM generation check to VeinsTransmitRateControl.
-     * Called by VanetzaAdapter::checkCamGeneration() after computing deltas.
+     * Called by VanetzaToVeinsBridge::checkCamGeneration() after computing deltas.
      *
      * @param deltaHeading_deg  Absolute heading change since last CAM [degrees]
      * @param deltaPos_m        Absolute position change since last CAM [meters]
@@ -152,53 +147,10 @@ public:
                             double deltaSpeed_ms,
                             vanetza::Clock::duration elapsed);
 
-    /**
-     * Builds a fully populated ASN.1 CAM structure from the current vehicle state.
-     *
-     * Populates:
-     *   - ITS PDU Header (messageID, protocolVersion, stationID)
-     *   - Basic Container (stationType, referencePosition)
-     *   - High Frequency Container (speed, heading, mandatory unavailable fields)
-     *
-     * All optional fields not yet available are set to their ETSI "unavailable" values.
-     *
-     * @param vdp  Current vehicle data (position, speed, heading, stationID)
-     * @return     Populated vanetza::asn1::Cam ready for encoding
-     */
-    vanetza::asn1::Cam buildCam(const VeinsVehicleDataProvider& vdp);
-
-    /**
-     * Builds a fully populated ASN.1 DENM structure from the current vehicle state.
-     *
-     * Populates:
-     *   - ITS PDU Header (messageID, protocolVersion, stationID)
-     *   - Management Container (actionID, detectionTime, referenceTime,
-     *                          eventPosition, validityDuration, stationType)
-     *   - Situation Container (informationQuality, causeCode, subCauseCode)
-     *
-     * @param vdp             Current vehicle data (position, stationID)
-     * @param sequenceNumber  DENM sequence number (managed by DemoBaseApplLayer)
-     * @param causeCode       ETSI cause code identifying the event type
-     * @param subCauseCode    ETSI sub-cause code for additional event detail
-     * @return                Populated vanetza::asn1::Denm ready for encoding
-     */
-    vanetza::asn1::Denm buildDenm(const VeinsVehicleDataProvider& vdp,
-                                  uint16_t sequenceNumber,
-                                  int causeCode,
-                                  int subCauseCode);
-
 private:
-    /**
-     * Encodes a 64-bit millisecond timestamp into an ASN.1 TimestampIts_t (BER).
-     * Allocates the internal buffer; caller must ensure the struct is zero-initialized.
-     *
-     * @param ts  Output ASN.1 timestamp structure
-     * @param ms  Timestamp value in milliseconds (ITS time reference)
-     */
-    void setTimestamp(TimestampIts_t& ts, uint64_t ms);
-
     VeinsTransmitRateControl   mTrc;  ///< ETSI §6.1.3 rate control implementation
     VeinsChannelProbeProcessor mCpp;  ///< Channel load processor (stub)
+
 };
 
 } // namespace veins

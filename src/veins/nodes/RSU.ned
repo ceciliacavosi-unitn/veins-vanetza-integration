@@ -48,12 +48,12 @@ module RSU
                 @display("p=130,172;i=block/cogwheel");
         }
 
-        adapter: veins.modules.application.ieee80211p.VanetzaAdapter {
+        bridge: veins.modules.application.ieee80211p.VanetzaToVeinsBridge {
             parameters:
                 @display("p=130,50;i=block/network2");
         }
 
-        provider: veins.modules.application.ieee80211p.VeinsVehicleDataProvider {
+        converter: veins.modules.application.ieee80211p.ApplicationToVanetzaConverter {
             parameters:
                 @display("p=200,50");
         }
@@ -63,22 +63,22 @@ module RSU
         // DATA PLANE
         // =========================
 
-        nic.upperLayerOut       --> adapter.lowerLayerIn;
-        adapter.upperLayerOut   --> appl.lowerLayerIn;
+        nic.upperLayerOut       --> bridge.lowerLayerIn;
+        bridge.upperLayerOut   --> appl.lowerLayerIn;
 
-        appl.lowerLayerOut      --> adapter.upperLayerIn;
-        adapter.lowerLayerOut   --> nic.upperLayerIn;
+        appl.lowerLayerOut      --> bridge.upperLayerIn;
+        bridge.lowerLayerOut   --> nic.upperLayerIn;
 
 
         // =========================
         // CONTROL PLANE
         // =========================
 
-        nic.upperControlOut     --> adapter.lowerControlIn;
-        adapter.upperControlOut --> appl.lowerControlIn;
+        nic.upperControlOut     --> bridge.lowerControlIn;
+        bridge.upperControlOut --> appl.lowerControlIn;
 
-        appl.lowerControlOut    --> adapter.upperControlIn;
-        adapter.lowerControlOut --> nic.upperControlIn;
+        appl.lowerControlOut    --> bridge.upperControlIn;
+        bridge.lowerControlOut --> nic.upperControlIn;
 
 
         // =========================

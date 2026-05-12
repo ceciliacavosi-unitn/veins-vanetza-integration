@@ -3,10 +3,6 @@
 #include <memory>
 #include <string>
 
-#include "veins/modules/application/ieee80211p/VeinsVehicleDataProvider.h"
-#include "veins/modules/application/ieee80211p/VeinsDccEntity.h"
-
-// Vanetza
 #include "vanetza/asn1/cam.hpp"
 #include "vanetza/asn1/denm.hpp"
 #include "vanetza/asn1/asn1c_wrapper.hpp"
@@ -18,6 +14,8 @@
 #include <vanetza/facilities/cam_functions.hpp>
 #include <vanetza/asn1/its/ReferencePosition.h>
 #include <vanetza/asn1/its/Heading.h>
+#include <veins/modules/application/ieee80211p/ApplicationToVanetzaConverter.h>
+#include <veins/modules/application/ieee80211p/VanetzaEntityImplementation.h>
 
 // Veins messages
 #include "veins/modules/messages/CamMessage_m.h"
@@ -30,11 +28,11 @@ namespace veins {
 class CamMessage;
 class DenmMessage;
 
-class VanetzaAdapter: public cSimpleModule
+class VanetzaToVeinsBridge: public cSimpleModule
 {
 public:
-    VanetzaAdapter();
-    ~VanetzaAdapter(){}
+    VanetzaToVeinsBridge();
+    ~VanetzaToVeinsBridge(){}
 
     // ============================
     // TX helpers
@@ -42,12 +40,12 @@ public:
 
     // populate only CAM/DENM parts (called from DemoBaseApplLayer)
     void populateCAM(CamMessage* cam,
-                     VeinsVehicleDataProvider* vdp,
+                     ApplicationToVanetzaConverter* vdp,
                      int headerLength,
                      int beaconUserPriority);
 
     void populateDENM(DenmMessage* denm,
-                      VeinsVehicleDataProvider* vdp,
+                      ApplicationToVanetzaConverter* vdp,
                       uint16_t& sequenceNumber,
                       int causeCode,
                       int subCauseCode,
@@ -63,17 +61,22 @@ public:
     void onDENM(DenmMessage* denmMsg, const std::string& nodeName);
 
     // ============================
-    // DCC access (for scheduling)
+    // Vanetza entity access
     // ============================
 
-    vanetza::dcc::Entity& getDccEntity();
+    vanetza::dcc::Entity& getVanetzaEntity();
 
     // ============================
-    // DCC / CAM generation check
+    // CAM generation logic
     // ============================
 
-    bool computeAndCheckCamDeltas(const VeinsVehicleDataProvider& vdp);
-    void notifyCamSent(const VeinsVehicleDataProvider& vdp);
+    // Returns true if position, speed or heading deltas exceed ETSI thresholds,
+    // triggering a new CAM generation
+    bool computeAndCheckCamDeltas(const ApplicationToVanetzaConverter& vdp);
+
+    // Updates internal state after a CAM has been successfully sent
+    // (e.g. resets delta counters and last known position/speed/heading)
+    void notifyCamSent(const ApplicationToVanetzaConverter& vdp);
 
     // DENM message cause code to string
     std::string denmCauseToString(int cause);
@@ -82,7 +85,7 @@ public:
     void handleMessage(omnetpp::cMessage* msg) override;
 
 private:
-    std::unique_ptr<VeinsDccEntity> mDccEntity;
+    std::unique_ptr<VanetzaEntityImplementation> vanetzaEntityImplementation;
 
     // --- Last CAM reference state (for ETSI §6.1.3 delta checks) ---
     ReferencePosition_t         mLastCamPos;

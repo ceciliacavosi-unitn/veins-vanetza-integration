@@ -7,11 +7,11 @@ package veins.modules.application.ieee80211p;
 //   - Serialization and deserialization of V2X messages (CAM and DENM)
 //   - Forwarding of data and control messages between appl and nic
 //
-simple VanetzaAdapter
+simple VanetzaToVeinsBridge
 {
     parameters:
         @display("i=block/network2");
-        @class(veins::VanetzaAdapter);
+        @class(veins::VanetzaToVeinsBridge);
 
     gates:
         // --- Data plane ---

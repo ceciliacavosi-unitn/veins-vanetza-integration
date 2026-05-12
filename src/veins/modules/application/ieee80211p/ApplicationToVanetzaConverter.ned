@@ -5,9 +5,9 @@ package veins.modules.application.ieee80211p;
 // Provides vehicle kinematic data (position, speed, heading, acceleration)
 // and ITS station ID for CAM and DENM message construction.
 //
-simple VeinsVehicleDataProvider
+simple ApplicationToVanetzaConverter
 {
     parameters:
         @display("i=block/network2");
-        @class(veins::VeinsVehicleDataProvider);
+        @class(veins::ApplicationToVanetzaConverter);
 }
