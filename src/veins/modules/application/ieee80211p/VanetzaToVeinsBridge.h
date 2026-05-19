@@ -93,6 +93,7 @@ private:
     double                      mLastCamSpeed_ms = 0.0;
     vanetza::Clock::time_point  mLastCamTime;
     bool                        mLastCamValid = false;
+    simsignal_t                 camSentSignal;
 };
 
 } // namespace veins

@@ -279,18 +279,18 @@ void VanetzaToVeinsBridge::initialize()
 {
     EV_INFO << "VanetzaToVeinsBridge initialized as OMNeT++ module at "
             << getFullPath() << "\n";
+    camSentSignal = registerSignal("camSent");
 }
 
 void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
 {
-    // Diagnostic temporary log for ALL messages to see what arrives
     EV_INFO << "VanetzaToVeinsBridge received type=" << msg->getClassName()
             << " name='" << msg->getName() << "' on gate "
             << msg->getArrivalGate()->getFullName()
             << " at " << getFullPath() << "\n";
 
-    // forwarding (unchanged)
     if (msg->arrivedOn("upperLayerIn")) {
+        emit(camSentSignal, 1);
         send(msg, "lowerLayerOut");
     }
     else if (msg->arrivedOn("lowerLayerIn")) {

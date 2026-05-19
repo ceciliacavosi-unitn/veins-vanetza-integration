@@ -13,6 +13,14 @@ simple VanetzaToVeinsBridge
         @display("i=block/network2");
         @class(veins::VanetzaToVeinsBridge);
 
+        @signal[camSent](type=long);
+        @statistic[camSent](
+            title="CAM sent";
+            source="camSent";
+            record=vector,count,sum;
+            interpolationmode=none
+        );
+
     gates:
         // --- Data plane ---
         input upperLayerIn;    // incoming data from application layer
