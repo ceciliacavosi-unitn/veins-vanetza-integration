@@ -280,6 +280,7 @@ void VanetzaToVeinsBridge::initialize()
     EV_INFO << "VanetzaToVeinsBridge initialized as OMNeT++ module at "
             << getFullPath() << "\n";
     camSentSignal = registerSignal("camSent");
+    camReceivedSignal = registerSignal("camReceived");
 }
 
 void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
@@ -294,6 +295,7 @@ void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
         send(msg, "lowerLayerOut");
     }
     else if (msg->arrivedOn("lowerLayerIn")) {
+        emit(camReceivedSignal, 1);
         send(msg, "upperLayerOut");
     }
     else if (msg->arrivedOn("upperControlIn")) {

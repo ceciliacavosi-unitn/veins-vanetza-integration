@@ -21,6 +21,14 @@ simple VanetzaToVeinsBridge
             interpolationmode=none
         );
 
+        @signal[camReceived](type=long);
+        @statistic[camReceived](
+            title="CAM received";
+            source="camReceived";
+            record=vector,count,sum;
+            interpolationmode=none
+        );
+
     gates:
         // --- Data plane ---
         input upperLayerIn;    // incoming data from application layer
