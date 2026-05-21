@@ -95,6 +95,8 @@ private:
     bool                        mLastCamValid = false;
     simsignal_t                 camSentSignal;
     simsignal_t                 camReceivedSignal;
+    simsignal_t                 denmSentSignal;
+    simsignal_t                 denmReceivedSignal;
 };
 
 } // namespace veins

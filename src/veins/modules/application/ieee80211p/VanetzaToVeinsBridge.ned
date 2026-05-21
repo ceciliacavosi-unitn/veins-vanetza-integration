@@ -29,6 +29,22 @@ simple VanetzaToVeinsBridge
             interpolationmode=none
         );
 
+        @signal[denmSent](type=long);
+        @statistic[denmSent](
+        	title="DENM sent";
+        	source="denmSent";
+        	record=vector,count,sum;
+        	interpolationmode=none
+       );
+
+        @signal[denmReceived](type=long);
+        @statistic[denmReceived](
+        	title="DENM received";
+        	source="denmReceived";
+        	record=vector,count,sum;
+        	interpolationmode=none
+        );
+
     gates:
         // --- Data plane ---
         input upperLayerIn;    // incoming data from application layer

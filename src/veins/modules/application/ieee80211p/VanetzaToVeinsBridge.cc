@@ -281,6 +281,8 @@ void VanetzaToVeinsBridge::initialize()
             << getFullPath() << "\n";
     camSentSignal = registerSignal("camSent");
     camReceivedSignal = registerSignal("camReceived");
+    denmSentSignal = registerSignal("denmSent");
+    denmReceivedSignal = registerSignal("denmReceived");
 }
 
 void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
@@ -291,11 +293,19 @@ void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
             << " at " << getFullPath() << "\n";
 
     if (msg->arrivedOn("upperLayerIn")) {
-        emit(camSentSignal, 1);
+        if (dynamic_cast<DenmMessage*>(msg)) {
+            emit(denmSentSignal, 1.0);
+        } else {
+            emit(camSentSignal, 1.0);
+        }
         send(msg, "lowerLayerOut");
     }
     else if (msg->arrivedOn("lowerLayerIn")) {
-        emit(camReceivedSignal, 1);
+        if (dynamic_cast<DenmMessage*>(msg)) {
+            emit(denmReceivedSignal, 1.0);
+        } else {
+            emit(camReceivedSignal, 1.0);
+        }
         send(msg, "upperLayerOut");
     }
     else if (msg->arrivedOn("upperControlIn")) {
