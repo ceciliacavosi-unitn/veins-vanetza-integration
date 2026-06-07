@@ -88,15 +88,41 @@ private:
     std::unique_ptr<VanetzaEntityImplementation> vanetzaEntityImplementation;
 
     // --- Last CAM reference state (for ETSI §6.1.3 delta checks) ---
-    ReferencePosition_t         mLastCamPos;
-    HeadingValue_t              mLastCamHeading = HeadingValue_unavailable;
-    double                      mLastCamSpeed_ms = 0.0;
-    vanetza::Clock::time_point  mLastCamTime;
-    bool                        mLastCamValid = false;
-    simsignal_t                 camSentSignal;
-    simsignal_t                 camReceivedSignal;
-    simsignal_t                 denmSentSignal;
-    simsignal_t                 denmReceivedSignal;
+    /** ASN.1 structured position of the vehicle when the last CAM was generated */
+        ReferencePosition_t         mLastCamPos;
+
+        /** Heading of the vehicle at the last CAM generation (in tenths of degrees) */
+        HeadingValue_t              mLastCamHeading = HeadingValue_unavailable;
+
+        /** Speed of the vehicle at the last CAM generation (in meters per second) */
+        double                      mLastCamSpeed_ms = 0.0;
+
+        /** Timestamp of the last CAM generation using Vanetza's internal clock */
+        vanetza::Clock::time_point  mLastCamTime;
+
+        /** Last CAM generation timestamp using OMNeT++ simulation time (for easy interval logging) */
+        simtime_t                   mLastCamTime_sim = 0;
+
+        /** Flag indicating if the reference state (mLastCam*) is valid for delta computation */
+        bool                        mLastCamValid = false;
+
+        /** Signal emitted when a CAM is sent by this node */
+        simsignal_t                 camSentSignal;
+
+        /** Signal emitted when a CAM is received by this node */
+        simsignal_t                 camReceivedSignal;
+
+        /** Signal emitted when a DENM is sent by this node */
+        simsignal_t                 denmSentSignal;
+
+        /** Signal emitted when a DENM is received by this node */
+        simsignal_t                 denmReceivedSignal;
+
+        // Vectors for ETSI EN 302 637-2 compliance validation
+        // Recorded at each CAM transmission to correlate vehicle dynamics with CAM generation
+        cOutVector                  vCamInterval;   // Time elapsed since the last CAM (seconds)
+        cOutVector                  vSpeed;         // Vehicle speed at CAM generation time (m/s)
+        cOutVector                  vHeading;       // Vehicle heading at CAM generation time (degrees, 0–360)
 };
 
 } // namespace veins

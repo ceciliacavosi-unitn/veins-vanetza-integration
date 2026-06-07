@@ -86,6 +86,31 @@ bool VanetzaToVeinsBridge::computeAndCheckCamDeltas(const ApplicationToVanetzaCo
 // the very first CAM ever sent, causing incorrect generation decisions.
 void VanetzaToVeinsBridge::notifyCamSent(const ApplicationToVanetzaConverter& vdp)
 {
+    // Compute elapsed time since the last CAM and update the reference timestamp
+    simtime_t interval = simTime() - mLastCamTime_sim;
+    mLastCamTime_sim = simTime();
+
+    // Convert heading from radians to degrees (0–360 range)
+    double headingNow_deg = std::fmod(vdp.heading().value() * (180.0 / M_PI) + 360.0, 360.0);
+
+    // Log vehicle state at CAM generation time for ETSI EN 302 637-2 compliance validation.
+    // "PERIODIC" if the CAM was triggered by the 1s timeout, "DYNAMIC" if triggered by a delta threshold.
+    EV_INFO << "[ETSI_VALIDATION]"
+            << " t=" << simTime()
+            << " | module=" << getParentModule()->getFullPath()
+            << " | interval=" << interval << "s"
+            << " | speed=" << vdp.speed().value() << " m/s"
+            << " | heading=" << headingNow_deg << " deg"
+            << " | lat=" << vdp.latitude().value()
+            << " | lon=" << vdp.longitude().value()
+            << " | reason=" << (interval.dbl() >= 0.99 ? "PERIODIC" : "DYNAMIC")
+            << endl;
+
+    // Record vectors for graphical ETSI validation
+    vCamInterval.record(interval.dbl());
+    vSpeed.record(vdp.speed().value());
+    vHeading.record(headingNow_deg);
+
     // Save current position as ASN.1 ReferencePosition (scaled to 1e-7 degrees)
     mLastCamPos.latitude  = static_cast<Latitude_t>(std::lround(vdp.latitude().value()  * 1e7));
     mLastCamPos.longitude = static_cast<Longitude_t>(std::lround(vdp.longitude().value() * 1e7));
@@ -275,15 +300,49 @@ void VanetzaToVeinsBridge::onDENM(DenmMessage* denmMsg, const std::string& nodeN
     }
 }
 
+// ============================================================
+// OMNeT++ module initialization (stage 0)
+//
+// Called once when the simulation starts. Registers output signals
+// for scalar/statistics collection and names the output vectors
+// used for ETSI compliance validation charts.
+// ============================================================
+
 void VanetzaToVeinsBridge::initialize()
 {
     EV_INFO << "VanetzaToVeinsBridge initialized as OMNeT++ module at "
             << getFullPath() << "\n";
+
+    // Scalar signals for OMNeT++ .sca statistics (total CAM/DENM sent/received)
     camSentSignal = registerSignal("camSent");
     camReceivedSignal = registerSignal("camReceived");
     denmSentSignal = registerSignal("denmSent");
     denmReceivedSignal = registerSignal("denmReceived");
+
+    // Output vectors for time-series validation of ETSI EN 302 637-2 rules
+    // These vectors are recorded per-CAM to correlate vehicle dynamics
+    // with generation intervals in the Analysis Editor charts.
+    vCamInterval.setName("camInterval");
+    vSpeed.setName("speedAtCam");
+    vHeading.setName("headingAtCam");
 }
+
+// ============================================================
+// OMNeT++ message handler — protocol layer forwarding
+//
+// Implements the forwarding plane of the VanetzaAdapter:
+//   - Data messages (CAM/DENM) are relayed between the upper
+//     application layer and the lower NIC (802.11p MAC/PHY).
+//   - Control messages are passed through transparently.
+//   - Scalar signals are emitted for each TX/RX event so that
+//     the Analysis Editor can count total messages per node.
+//
+// The gate names match the NED declaration:
+//   upperLayerIn / upperLayerOut   → Application (e.g., DemoBaseApplLayer)
+//   lowerLayerIn / lowerLayerOut   → NIC (e.g., Nic80211p)
+//   upperControlIn / upperControlOut
+//   lowerControlIn / lowerControlOut
+// ============================================================
 
 void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
 {
@@ -292,6 +351,11 @@ void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
             << msg->getArrivalGate()->getFullName()
             << " at " << getFullPath() << "\n";
 
+    // --------------------------------------------------------
+    // UPLINK: Application → NIC (TX path)
+    // Distinguish DENM from CAM for separate signal counting,
+    // then forward to the lower layer for wireless transmission.
+    // --------------------------------------------------------
     if (msg->arrivedOn("upperLayerIn")) {
         if (dynamic_cast<DenmMessage*>(msg)) {
             emit(denmSentSignal, 1.0);
@@ -300,6 +364,11 @@ void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
         }
         send(msg, "lowerLayerOut");
     }
+    // --------------------------------------------------------
+    // DOWNLINK: NIC → Application (RX path)
+    // Count received messages and hand them up to the
+    // application layer (e.g., onCAM/onDENM callbacks).
+    // --------------------------------------------------------
     else if (msg->arrivedOn("lowerLayerIn")) {
         if (dynamic_cast<DenmMessage*>(msg)) {
             emit(denmReceivedSignal, 1.0);
@@ -308,12 +377,18 @@ void VanetzaToVeinsBridge::handleMessage(cMessage* msg)
         }
         send(msg, "upperLayerOut");
     }
+    // --------------------------------------------------------
+    // CONTROL PATH: pass-through between upper and lower layers
+    // --------------------------------------------------------
     else if (msg->arrivedOn("upperControlIn")) {
         send(msg, "lowerControlOut");
     }
     else if (msg->arrivedOn("lowerControlIn")) {
         send(msg, "upperControlOut");
     }
+    // --------------------------------------------------------
+    // SAFETY: unknown gate → discard to prevent memory leaks
+    // --------------------------------------------------------
     else {
         EV_WARN << "VanetzaToVeinsBridge received message on unexpected gate "
                 << msg->getArrivalGate()->getFullName()
