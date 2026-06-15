@@ -5,7 +5,7 @@
         <input pattern="results/General-*.sca"/>
     </inputs>
     <charts>
-        <chart createdWith="OMNeT++ 6.2.0.250714-83e173e93a" icon="icons/full/obj/linechart.png" id="1681752094" name="CAMs_sent_line_chart_interval" resultTypes="vector" template="linechart_native" type="LINE">
+        <chart createdWith="OMNeT++ 6.2.0.250714-83e173e93a" icon="icons/full/obj/linechart.png" id="1561542424" name="CAMs_sent_line_chart_interval" resultTypes="vector" template="linechart_native" type="LINE">
             <script><![CDATA[import math
 from omnetpp.scave import results, chart, utils
 
@@ -699,7 +699,7 @@ utils.export_data_if_needed(df, props)
             <property name="ordering_regex_list" value=""/>
             <property name="Plot.Caching" value="true"/>
             <property name="legend_manual" value="false"/>
-            <property name="yaxis_title" value="CAM Generation Interval [s]"/>
+            <property name="yaxis_title" value="CAM Generation Interval"/>
             <property name="legend_replacements" value="RSUExampleScenario.node[0].appl --&gt; Vehicle 0&#10;RSUExampleScenario.node[1].appl --&gt; Vehicle 1&#10;RSUExampleScenario.node[2].appl --&gt; Vehicle 2"/>
             <property name="Legend.Border" value="false"/>
             <property name="Plot.Title.Font" value="Arial-regular-10"/>
@@ -722,7 +722,7 @@ utils.export_data_if_needed(df, props)
             <property name="omit_empty_vectors" value="false"/>
             <property name="vector_end_time" value=""/>
             <property name="linecolor" value=""/>
-            <property name="yaxis_unit" value=""/>
+            <property name="yaxis_unit" value="s"/>
             <property name="legend_prefer_result_titles" value="true"/>
             <property name="title" value="CAMs_sent_line_chart_interval"/>
             <property name="legend_automatic" value="true"/>
@@ -747,7 +747,7 @@ utils.export_data_if_needed(df, props)
             <property name="Plot.Antialias" value="true"/>
             <property name="include_fields" value="false"/>
         </chart>
-        <chart createdWith="OMNeT++ 6.2.0.250714-83e173e93a" icon="icons/full/obj/linechart.png" id="125145524" name="CAMs_sent_line_chart_speed" resultTypes="vector" template="linechart_native" type="LINE">
+        <chart createdWith="OMNeT++ 6.2.0.250714-83e173e93a" icon="icons/full/obj/linechart.png" id="1912716618" name="CAMs_sent_line_chart_speed" resultTypes="vector" template="linechart_native" type="LINE">
             <script><![CDATA[import math
 from omnetpp.scave import results, chart, utils
 
@@ -1441,7 +1441,7 @@ utils.export_data_if_needed(df, props)
             <property name="ordering_regex_list" value=""/>
             <property name="Plot.Caching" value="true"/>
             <property name="legend_manual" value="false"/>
-            <property name="yaxis_title" value="speed"/>
+            <property name="yaxis_title" value="speed [m/s]"/>
             <property name="legend_replacements" value="RSUExampleScenario.node[0].appl --&gt; Vehicle 0&#10;RSUExampleScenario.node[1].appl --&gt; Vehicle 1&#10;RSUExampleScenario.node[2].appl --&gt; Vehicle 2"/>
             <property name="Legend.Border" value="false"/>
             <property name="Plot.Title.Font" value="Arial-regular-10"/>
@@ -1489,9 +1489,9 @@ utils.export_data_if_needed(df, props)
             <property name="Plot.Antialias" value="true"/>
             <property name="include_fields" value="false"/>
         </chart>
-        <chart createdWith="OMNeT++ 6.2.0.250714-83e173e93a" icon="icons/full/obj/linechart.png" id="671387539" name="CAMs_sent_line_chart_heading" resultTypes="vector" template="linechart_native" type="LINE">
-            <script><![CDATA[from omnetpp.scave import results, chart, utils
-import math
+        <chart createdWith="OMNeT++ 6.2.0.250714-83e173e93a" icon="icons/full/obj/linechart.png" id="835649758" name="CAMs_sent_line_chart_heading" resultTypes="vector" template="linechart_native" type="LINE">
+            <script><![CDATA[import math
+from omnetpp.scave import results, chart, utils
 
 # get chart properties
 props = chart.get_properties()

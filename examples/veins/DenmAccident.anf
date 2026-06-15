@@ -5174,7 +5174,7 @@ utils.export_data_if_needed(df, props)]]></script>
             <property name="legend_replacements" value=""/>
             <property name="cycle_seed" value="0"/>
             <property name="xaxis_log" value="false"/>
-            <property name="xaxis_title" value="simulation tim"/>
+            <property name="xaxis_title" value="simulation time"/>
             <property name="grid_density" value="Major"/>
             <property name="xaxis_min" value="0"/>
             <property name="vector_start_time" value=""/>
