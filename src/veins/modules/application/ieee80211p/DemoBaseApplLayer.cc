@@ -255,7 +255,7 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
         double stopTime = hasPar("denmStopTime") ? par("denmStopTime").doubleValue() : 200.0;
         if (simTime().dbl() > stopTime) {
             EV_INFO << "DENM [TX]: stopTime=" << stopTime << "s reached — stopping"
-                    << " name=" << getParentModule()->getFullName() << "\n";
+                    << " node=" << getParentModule()->getFullName() << "\n";
             break;
         }
 
@@ -264,6 +264,7 @@ void DemoBaseApplLayer::handleSelfMsg(cMessage* msg)
         int cause = par("denmDefaultCause");
 
         EV_INFO << "DENM [TX]: cause=" << cause
+                << " sender=" << getParentModule()->getFullName()
                 << " t=" << simTime() << endl;
         sendDown(denm);
 
@@ -547,6 +548,7 @@ void DemoBaseApplLayer::handlePositionUpdate(cObject* obj)
         if (simTime() - lastDenmTime >= finalInterval) {
             EV_INFO << "DENM [TRIGGER]: cause=" << cause
                     << " speed=" << speed_kmh
+                    << " node=" << getParentModule()->getFullName()
                     << " t=" << simTime() << endl;
             triggerDenm(static_cast<CauseCodeType_t>(cause), cause,
                         par("denmDefaultSubcause"), nullptr, true);
@@ -589,7 +591,7 @@ void DemoBaseApplLayer::triggerDenm(CauseCodeType_t eventCause, int cause, int s
     // Rate limiting: enforce minimum inter-DENM interval
     if (simTime() - lastDenmTime < denmMinInterval) {
         EV_WARN << "DENM [TRIGGER]: rate-limited — cause=" << actualCause
-                << " name=" << getParentModule()->getFullName() << endl;
+                << " node=" << getParentModule()->getFullName() << endl;
         return;
     }
 
@@ -619,7 +621,8 @@ void DemoBaseApplLayer::sendDenmNow(CauseCodeType_t eventCause, int cause, int s
     scheduleAt(simTime(), sendDenmEvt);
 
     int causeCode = (cause >= 0) ? cause : static_cast<int>(eventCause);
-    EV_INFO << "DENM [TRIGGER]: cause=" << cause
+    EV_INFO << "DENM [SEND NOW]: cause=" << causeCode
+            << " node=" << getParentModule()->getFullName()
             << " t=" << simTime() << endl;
 }
 

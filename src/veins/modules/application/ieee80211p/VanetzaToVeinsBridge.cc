@@ -291,8 +291,8 @@ void VanetzaToVeinsBridge::onDENM(DenmMessage* denmMsg, const std::string& nodeN
             ? denm->denm.situation->eventType.causeCode
             : -1;
 
-        EV_INFO << "DENM [RX]: cause=" << denmCauseToString(cause)
-                << " name=" << nodeName
+        EV_INFO << "DENM [RX]: cause=" << cause << " (" << denmCauseToString(cause) << ")"
+                << " receiver=" << nodeName
                 << " t=" << simTime() << "\n";
 
     } catch (...) {
